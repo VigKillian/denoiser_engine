@@ -26,6 +26,7 @@ from util import my_io
 #from util import my_img_evaluation as my_evl
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
+import config as cfg
 
 # In[] 
 # environment config
@@ -45,7 +46,7 @@ tf.reset_default_graph()
 # setting 
 SAVE_FLAG = 1   # flag of saving the outputs of the network's prediction
 test_batch_size = 100
-pic_size = [32,32] # picture size, for sml
+pic_size = list(cfg.pic_size)
 # pic_size = [28,28] # picture size, for N-MNIST
 
 # path
@@ -98,30 +99,10 @@ import glob, os
 from skimage.io import imread
 from skimage.transform import resize
 
-test_noisy_dir = "./dataset/val/noisy"
-
-def list_images(d, exts=(".pgm",".png",".jpg",".jpeg",".bmp",".tif",".tiff")):
-    paths = []
-    for ext in exts:
-        paths.extend(glob.glob(os.path.join(d, f"*{ext}")))
-    return sorted(paths)
-
-def load_gray_resized(paths, size_hw):
-    arr = []
-    for p in paths:
-        img = imread(p, as_gray=True)
-        if img.dtype != np.float32 and img.dtype != np.float64:
-            img = img.astype(np.float32) / 255.0
-        img = resize(img, (size_hw[0], size_hw[1]),
-                     preserve_range=True, anti_aliasing=True).astype(np.float32)
-        arr.append(img)
-    if len(arr) == 0:
-        raise RuntimeError(f"No images found under {test_noisy_dir}")
-    return np.stack(arr, axis=0)
-
+from config import list_images, load_gray_resized
+test_noisy_dir = cfg.val_dir + "/noisy"
 in_imgs = load_gray_resized(list_images(test_noisy_dir), pic_size)
 print('pic_test_x: ', in_imgs.shape)
-
 
 
 # In[]:

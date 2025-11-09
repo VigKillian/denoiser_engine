@@ -21,13 +21,14 @@ from time import time
 import matplotlib.pyplot as plt
 import os
 from util import my_io
+import config as cfg
 
 # In[] 
 # environment config
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["CUDA_VISIBLE_DEVICES"] = cfg.CUDA_VISIBLE_DEVICES
 config = tf.ConfigProto()
-config.gpu_options.allow_growth=True
-config.gpu_options.per_process_gpu_memory_fraction = 0.8
+config.gpu_options.allow_growth = cfg.gpu_allow_growth
+config.gpu_options.per_process_gpu_memory_fraction = cfg.gpu_mem_fraction
 
 
 # In[]:
@@ -41,35 +42,16 @@ tf.reset_default_graph()
 SUP_FLAG = 1 # supervised learning flag
 
 # setting
-epochs = 50
-batch_size = 64
-learning_rate = 0.001
-pic_size = [32, 32]  # picture size, for sml
-# pic_size = [28,28] # picture size, for N-MNIST
-keep_prob_v = 0.7
-if SUP_FLAG:
-    mask_prob_v  = 0.0 # supervised mode: mask layer' drop probability. 
-else:
-    mask_prob_v = 0.3  # unsupervised mode: mask layer' drop probability. 
+SUP_FLAG = cfg.SUP_FLAG
+epochs = cfg.epochs
+batch_size = cfg.batch_size
+learning_rate = cfg.learning_rate
+pic_size = list(cfg.pic_size)  
+keep_prob_v = cfg.keep_prob_v
+mask_prob_v = cfg.mask_prob_v
 
-
-
-timestamp = '{:%m-%d_%H-%M/}'.format(datetime.now())
-model_root_path = "./model_data/"
-
-if SUP_FLAG:
-    model_name =  "bsc-ConvDAE(sup)"
-else:
-    model_name =  "bsc-ConvDAE(unsup)"
-    
-model_dir = model_name + "--" +  timestamp
-model_path = model_root_path + model_dir 
-
-if not os.path.isdir(model_path):
-   os.makedirs(model_path)
-
-train_log_dir = './logs/train/bsc-ConvDAE_'+timestamp
-test_log_dir = './logs/test/bsc-ConvDAE_'+timestamp
+train_log_dir, test_log_dir = cfg.make_log_dirs("bsc-ConvDAE")
+model_path = cfg.make_model_path("bsc-ConvDAE(sup)" if SUP_FLAG else "bsc-ConvDAE(unsup)")
 
 # In[]: 
 # functions
@@ -113,16 +95,17 @@ with tf.name_scope('encoder'):
     max_p3 = tf.layers.max_pooling2d(conv3, (2,2), (2,2), padding='same')
 
 # Decoder
+up1, up2, up3 = cfg.upsample_sizes()
 with tf.name_scope('decoder'):
-    res4 = tf.image.resize_nearest_neighbor(max_p3, (8,8))
+    res4 = tf.image.resize_nearest_neighbor(max_p3, up1)
     conv4 = tf.layers.conv2d(res4, 16, (3,3), padding='same', activation=act_fun)
     # conv4 = tf.nn.dropout(conv4, keep_prob)
 
-    res5 = tf.image.resize_nearest_neighbor(conv4, (16,16))
+    res5 = tf.image.resize_nearest_neighbor(conv4, up2)
     conv5 = tf.layers.conv2d(res5, 32, (3,3), padding='same', activation=act_fun)
     # conv5 = tf.nn.dropout(conv5, keep_prob)
 
-    res6 = tf.image.resize_nearest_neighbor(conv5, (32,32))
+    res6 = tf.image.resize_nearest_neighbor(conv5, up3)
     conv6 = tf.layers.conv2d(res6, 64, (3,3), padding='same', activation=act_fun)
     # conv6 = tf.nn.dropout(conv6, keep_prob)
 
@@ -148,66 +131,7 @@ with tf.name_scope('train'):
 
 # In[]:
 # load data
-import glob
-from skimage.io import imread
-from skimage.transform import resize
-
-train_dir = "./dataset/train"
-val_dir   = "./dataset/val"
-
-def list_images(d, exts=(".pgm", ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff")):
-    paths = []
-    for ext in exts:
-        paths.extend(glob.glob(os.path.join(d, f"*{ext}")))
-    return sorted(paths)
-
-def load_gray_resized(paths, size_hw):
-    arr = []
-    for p in paths:
-        img = imread(p, as_gray=True)
-        if img.dtype != np.float32 and img.dtype != np.float64:
-            img = img.astype(np.float32) / 255.0
-        img = resize(img, (size_hw[0], size_hw[1]), preserve_range=True, anti_aliasing=True).astype(np.float32)
-        arr.append(img)
-    if len(arr) == 0:
-        raise RuntimeError(f"No images found under {os.path.dirname(paths[0]) if paths else '??'}")
-    return np.stack(arr, axis=0)  # [N, H, W]
-
-def stem_no_ext(path):
-    return os.path.splitext(os.path.basename(path))[0]
-
-def strip_noise_suffix(stem, suffix="_noise"):
-    # class1_0_noise -> class1_0
-    return stem[:-len(suffix)] if stem.endswith(suffix) else stem
-
-def build_pairs(noisy_dir, clean_dir, size_hw):
-    noisy_list = list_images(noisy_dir)
-    clean_list = list_images(clean_dir)
-    noisy_map = {strip_noise_suffix(stem_no_ext(p)): p for p in noisy_list}
-    clean_map = {stem_no_ext(p): p for p in clean_list}
-    common_keys = sorted(set(noisy_map.keys()) & set(clean_map.keys()))
-    if len(common_keys) == 0:
-        raise RuntimeError("No filename pairs matched between noisy/*_noise and imgs/*")
-
-    noisy_paths = [noisy_map[k] for k in common_keys]
-    clean_paths = [clean_map[k] for k in common_keys]
-    X = load_gray_resized(noisy_paths, size_hw)  # inputs
-    Y = load_gray_resized(clean_paths, size_hw)  # targets
-    return X, Y
-
-if SUP_FLAG == 1:
-    train_x, train_y = build_pairs(os.path.join(train_dir, "noisy2"),
-                                   os.path.join(train_dir, "imgs"),
-                                   pic_size)
-    test_x,  test_y  = build_pairs(os.path.join(val_dir, "noisy2"),
-                                   os.path.join(val_dir, "imgs"),
-                                   pic_size)
-else:
-    def build_unsup(root):
-        x = load_gray_resized(list_images(root), pic_size)
-        return x, x
-    train_x, train_y = build_unsup(os.path.join(train_dir, "imgs"))
-    test_x,  test_y  = build_unsup(os.path.join(val_dir, "imgs"))
+train_x, train_y, test_x, test_y = cfg.build_datasets()
 
 print('train_x: ', train_x.shape, '\ttrain_y: ', train_y.shape,
       '\ntest_x: ',  test_x.shape,  '\ttest_y: ',  test_y.shape)
@@ -264,7 +188,7 @@ for e in range(1, 1+epochs):
         res_imgs = sess.run(outputs_, feed_dict={inputs_: test_x1, targets_: test_y1,keep_prob:1.0, mask_prob: 0.0})
         res_imgs = np.squeeze(res_imgs)
         data_save = {'reconstructed': res_imgs}
-        my_io.save_mat(os.path.join(test_log_dir, f'val_imgs_epoch{e}.mat'), data_save)
+        my_io.save_mat(os.path.join(test_log_dir, f'val_imgs_epoch{e}.mat'), {'reconstructed': res_imgs})
         print('Time:', time_cost, '   Reconstruction test data saved to :',test_log_dir + '\n')    
             
     if e%20 == 0 and e!=0:
