@@ -2,5 +2,5 @@ gaussNoise/input_images
 gaussNoise/output_images_gausse
 gaussNoise/output_images_random
 gaussNoise/output_images_pepperSalt
-dataset/*
+
 ttt.txt
