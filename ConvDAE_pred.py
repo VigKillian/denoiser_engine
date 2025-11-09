@@ -1,0 +1,189 @@
+# -*- coding: utf-8 -*-
+'''
+【predictor for ConvDAE】
+usage：
+contents to modify：model path, model dir; SAVE_FLAG; 
+in_imgs,  gt_imgs; keep_prob, feed_dict; outputs (according to act_out_fun)
+
+notes：
+Different models' "outputs_" could be different. Sometimes it won't report errors, 
+but the result is not as expected.In this case, return to your model definition and confirm your "outputs_"
+
+Author: zhihong (z_zhi_hong@163.com)
+Date: 20190505
+Modified: zhihong_20190809
+
+'''
+# In[]:
+# import modules
+import os
+import numpy as np
+import tensorflow as tf
+from time import time
+import matplotlib.pyplot as plt
+import matplotlib.image as plt_img
+from util import my_io
+#from util import my_img_evaluation as my_evl
+from tensorflow.compat.v1 import ConfigProto
+from tensorflow.compat.v1 import InteractiveSession
+
+# In[] 
+# environment config
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+config = tf.ConfigProto()
+config.gpu_options.allow_growth=True
+config.gpu_options.per_process_gpu_memory_fraction = 0.8
+
+
+# In[]:
+# graph reset
+tf.reset_default_graph()  
+
+
+# In[]:
+# parameters config
+# setting 
+SAVE_FLAG = 1   # flag of saving the outputs of the network's prediction
+test_batch_size = 100
+pic_size = [32,32] # picture size, for sml
+# pic_size = [28,28] # picture size, for N-MNIST
+
+# path
+# data_path = "./dataset/single_molecule_localization/sml_test.mat" # for sml
+# data_path = "./dataset/N_MNIST_pic/N_MNIST_pic_test.mat" # for N-MNIST
+
+root_model_path = "model_data/"  # model's root dir
+model_dir = "bsc-ConvDAE(unsup)--02-24_10-33" # model'saving dir
+model_path = root_model_path + model_dir + "/"
+
+# model
+model_name = 'my_model' #model's name
+model_ind = -1  #model's index
+
+pred_res_path = './predict_res/' + data_path.split('/')[-1][0:-4] + "-" + model_dir + "/" # dir of the prediction results
+if not os.path.isdir(pred_res_path) and SAVE_FLAG:
+   os.makedirs(pred_res_path)
+
+
+# In[]
+# load model
+# sess = tf.Session()
+sess = InteractiveSession(config=config)
+sess.run(tf.global_variables_initializer())
+
+restorer = tf.train.import_meta_graph(model_path+model_name+'.meta')
+
+ckpt = tf.train.get_checkpoint_state(model_path)
+if ckpt:
+    ckpt_states = ckpt.all_model_checkpoint_paths
+    restorer.restore(sess, ckpt_states[model_ind])
+    
+# load Ops and variables according to old model and your need
+graph = tf.get_default_graph()
+inputs_ = graph.get_tensor_by_name("inputs/inputs_:0")
+mask_prob = graph.get_tensor_by_name("inputs/Placeholder_1:0")
+targets_ = graph.get_tensor_by_name("inputs/targets_:0")
+keep_prob = graph.get_tensor_by_name("inputs/Placeholder:0")  # for dropout
+
+outputs_ = graph.get_tensor_by_name("outputs/outputs_:0") # for act_fun = relu
+# outputs_ = graph.get_tensor_by_name("outputs/conv2d/Relu:0") 
+# outputs_ = graph.get_tensor_by_name("outputs/conv2d/Tanh:0") #for act_fun = tanh
+
+cost = graph.get_tensor_by_name("loss/Mean:0")
+
+
+# In[]:
+# load data
+import glob, os
+from skimage.io import imread
+from skimage.transform import resize
+
+test_noisy_dir = "./dataset/val/noisy"
+
+def list_images(d, exts=(".pgm",".png",".jpg",".jpeg",".bmp",".tif",".tiff")):
+    paths = []
+    for ext in exts:
+        paths.extend(glob.glob(os.path.join(d, f"*{ext}")))
+    return sorted(paths)
+
+def load_gray_resized(paths, size_hw):
+    arr = []
+    for p in paths:
+        img = imread(p, as_gray=True)
+        if img.dtype != np.float32 and img.dtype != np.float64:
+            img = img.astype(np.float32) / 255.0
+        img = resize(img, (size_hw[0], size_hw[1]),
+                     preserve_range=True, anti_aliasing=True).astype(np.float32)
+        arr.append(img)
+    if len(arr) == 0:
+        raise RuntimeError(f"No images found under {test_noisy_dir}")
+    return np.stack(arr, axis=0)
+
+in_imgs = load_gray_resized(list_images(test_noisy_dir), pic_size)
+print('pic_test_x: ', in_imgs.shape)
+
+
+
+# In[]:
+# prediction
+ind = 0
+mean_cost = 0
+time_cost = 0
+reconstructed = np.zeros(in_imgs.shape, dtype='float32')
+for batch_x, _ in my_io.batch_iter(test_batch_size,in_imgs, in_imgs, shuffle=False):
+    x = batch_x.reshape((-1, *pic_size, 1))
+    feed_dict = {inputs_: x, keep_prob:1.0, mask_prob:0.0} #for dropout
+#    feed_dict = {inputs_: x, targets_: y}  #for non dropout
+    
+    time1 = time()
+    res_imgs = sess.run(outputs_, feed_dict=feed_dict)
+    time2 = time()
+    time_cost += (time2 - time1)
+    res_imgs = np.squeeze(res_imgs)
+    reconstructed[ind*test_batch_size:(ind+1)*test_batch_size] = res_imgs
+    ind += 1
+time_cost = time_cost/len(in_imgs)
+print('\nmean time cost(ms):%f\n'%(time_cost*1e3))
+
+
+# In[]:
+# save the prediction results
+if SAVE_FLAG:
+#    np.save(pred_res_path+'pred_res',reconstructed)   # save pics in the format of .npy
+#    print('\nreconstruction data saved to : \n',pred_res_path+'pred_res.npy' ) 
+
+    data_save = {'reconstructed': reconstructed} # save pics in the format of .mat
+    my_io.save_mat(pred_res_path +'recon.mat', data_save) 
+     
+    for i in range(len(reconstructed)): # save pics in the format of .png
+        plt_img.imsave(pred_res_path+'png'+str(i)+'.png', reconstructed[i], cmap=plt.cm.gray)
+    print('\nreconstruction data saved to : \n',pred_res_path)
+    
+
+
+# In[]:
+# illustrate the results
+start = 0
+end = len(reconstructed)-1
+idx = np.linspace(start, end, 10).astype('int32')  # show 10 results at equal intervals
+
+in_images = in_imgs[idx]
+recon_images = reconstructed[idx]
+
+fig, axes = plt.subplots(nrows=2, ncols=10, sharex=True, sharey=True, figsize=(20,4))
+for images, row in zip([in_images, recon_images], axes):
+    for img, ax in zip(images, row):
+        ax.imshow(img.reshape((*pic_size)), cmap='gray')
+        ax.get_xaxis().set_visible(False)
+        ax.get_yaxis().set_visible(False)
+fig.tight_layout(pad=0.1)
+plt.show()
+
+# In[24]:
+# release
+sess.close()
+
+
+
+
+
