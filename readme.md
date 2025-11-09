@@ -12,7 +12,9 @@ slides : https://docs.google.com/presentation/d/1ieagxBHYyKp3GInJJxnne_svQI6RG-U
 ```bash
 conda create -n convdae_py37 python=3.7 -y
 conda activate convdae_py37
+
 ```
+# Pour l'exécuter
 ## Installer les dépendances
 
 ```bash
