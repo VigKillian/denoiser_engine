@@ -14,6 +14,7 @@ Date: 20190505
 Modified: zhihong_20190809
 
 '''
+print('>>> predictor start', flush=True)
 # In[]:
 # import modules
 import os
@@ -27,6 +28,8 @@ from util import my_io
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
 import config as cfg
+from skimage.metrics import peak_signal_noise_ratio as psnr
+import glob, cv2, numpy as np, os
 
 # In[] 
 # environment config
@@ -50,7 +53,7 @@ pic_size = list(cfg.pic_size)
 # pic_size = [28,28] # picture size, for N-MNIST
 
 # path
-# data_path = "./dataset/single_molecule_localization/sml_test.mat" # for sml
+data_path = "./dataset/single_molecule_localization/sml_test.mat" # for sml
 # data_path = "./dataset/N_MNIST_pic/N_MNIST_pic_test.mat" # for N-MNIST
 
 root_model_path = "model_data/"  # model's root dir
@@ -140,6 +143,46 @@ if SAVE_FLAG:
         plt_img.imsave(pred_res_path+'png'+str(i)+'.png', reconstructed[i], cmap=plt.cm.gray)
     print('\nreconstruction data saved to : \n',pred_res_path)
     
+
+gt_dir = os.path.join(cfg.val_dir, "imgs")
+gt_paths = sorted(glob.glob(os.path.join(gt_dir, "*")))
+N = min(len(gt_paths), len(reconstructed))
+if N == 0:
+    print("[PSNR] not find GT img, skip PSNR calculate. gt_dir=", gt_dir)
+else:
+    psnrs = []
+    names = []
+    for i in range(N):
+        gt = cv2.imread(gt_paths[i], 0)
+        if gt is None:
+            continue
+        gt = gt.astype(np.float32) / 255.0
+
+        if gt.shape != tuple(pic_size):
+            from skimage.transform import resize
+            gt = resize(gt, tuple(pic_size), anti_aliasing=True).astype(np.float32)
+
+        rec = np.clip(reconstructed[i].astype(np.float32), 0.0, 1.0)
+
+        val = psnr(gt, rec, data_range=1.0)
+        psnrs.append(val)
+        names.append(os.path.basename(gt_paths[i]))
+
+    if psnrs:
+        mean_psnr = float(np.mean(psnrs))
+        print(f"[PSNR] number of exemple N={len(psnrs)} | average PSNR = {mean_psnr:.3f} dB")
+
+        try:
+            os.makedirs(pred_res_path, exist_ok=True)
+            with open(os.path.join(pred_res_path, "psnr.txt"), "w") as f:
+                for n, p in zip(names, psnrs):
+                    f.write(f"{n}\t{p:.3f}\n")
+                f.write(f"\nMEAN\t{mean_psnr:.3f}\n")
+            print(f"[PSNR] result wrote in {os.path.join(pred_res_path,'psnr.txt')}")
+        except Exception as e:
+            print("[PSNR] fail to write ficher: ", e)
+    else:
+        print("[PSNR] not find exemple")
 
 
 # In[]:

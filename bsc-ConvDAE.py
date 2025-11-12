@@ -53,6 +53,16 @@ mask_prob_v = cfg.mask_prob_v
 train_log_dir, test_log_dir = cfg.make_log_dirs("bsc-ConvDAE")
 model_path = cfg.make_model_path("bsc-ConvDAE(sup)" if SUP_FLAG else "bsc-ConvDAE(unsup)")
 
+from skimage.metrics import peak_signal_noise_ratio as sk_psnr
+
+def psnr_batch(pred, gt, data_range=1.0):
+    if pred.ndim == 4 and pred.shape[-1] == 1:
+        pred = pred[..., 0]
+    if gt.ndim == 4 and gt.shape[-1] == 1:
+        gt = gt[..., 0]
+    psnrs = [sk_psnr(gt[i], pred[i], data_range=data_range) for i in range(len(pred))]
+    return psnrs, float(np.mean(psnrs))
+
 # In[]: 
 # functions
 # tensorflow log summary
@@ -187,6 +197,19 @@ for e in range(1, 1+epochs):
         
         res_imgs = sess.run(outputs_, feed_dict={inputs_: test_x1, targets_: test_y1,keep_prob:1.0, mask_prob: 0.0})
         res_imgs = np.squeeze(res_imgs)
+
+        #psnr
+        pred_clip = np.clip(res_imgs.astype(np.float32), 0.0, 1.0)
+        gt_clip   = np.clip(test_y1.squeeze().astype(np.float32), 0.0, 1.0)
+        psnr_list, psnr_mean = psnr_batch(pred_clip, gt_clip, data_range=1.0)
+        print(f'[VAL @ epoch {e}] mean PSNR = {psnr_mean:.3f} dB')
+
+        with open(os.path.join(test_log_dir, f'val_psnr_epoch{e}.txt'), 'w') as f:
+            for i, v in enumerate(psnr_list):
+                f.write(f'{i}\t{v:.3f}\n')
+            f.write(f'\nMEAN\t{psnr_mean:.3f}\n')
+        #psnr fin
+
         data_save = {'reconstructed': res_imgs}
         my_io.save_mat(os.path.join(test_log_dir, f'val_imgs_epoch{e}.mat'), {'reconstructed': res_imgs})
         print('Time:', time_cost, '   Reconstruction test data saved to :',test_log_dir + '\n')    
