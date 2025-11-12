@@ -15,7 +15,7 @@ Modified: zhihong_20210223
 # In[45]:
 # import modules
 import numpy as np
-import tensorflow as tf
+from tf_compat import tf
 from datetime import datetime
 from time import time
 import matplotlib.pyplot as plt

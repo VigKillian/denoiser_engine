@@ -18,7 +18,7 @@ Modified: zhihong_20190809
 # import modules
 import os
 import numpy as np
-import tensorflow as tf
+from tf_compat import tf
 from time import time
 import matplotlib.pyplot as plt
 import matplotlib.image as plt_img

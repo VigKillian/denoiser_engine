@@ -12,7 +12,7 @@ Modified: zhihong_20190810
 
 # In[]:
 # import modules
-import tensorflow as tf
+from tf_compat import tf
 from datetime import datetime
 import matplotlib.pyplot as plt
 from time import time
