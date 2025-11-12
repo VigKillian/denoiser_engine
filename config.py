@@ -9,7 +9,7 @@ log_root   = "./logs"
 
 SUP_FLAG = 1  
 pic_size = (32, 32) 
-epochs = 20
+epochs = 40
 batch_size = 64
 learning_rate = 1e-3
 keep_prob_v = 0.7
