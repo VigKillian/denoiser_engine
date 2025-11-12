@@ -26,3 +26,19 @@ pip install protobuf==3.20.3
 ```bash
 python bsc-ConvDAE.py
 ```
+
+Dataset: [google drive dataset link](https://drive.google.com/file/d/1eKtPhZ_DvEmP0TBdS7e0fN9Laz-wtxUq/view?usp=sharing)
+
+
+## Dans la structure ARM (T^T)
+```bash
+conda activate convdae_py37
+pip install --no-cache-dir "protobuf==3.19.6"
+pip install --no-cache-dir "tensorflow==2.10.*"
+
+pip install --no-cache-dir \
+  "numpy==1.21.6" \
+  "scipy==1.7.3" \
+  "scikit-image==0.19.3" \
+  "matplotlib==3.5.*"
+```
