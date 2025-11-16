@@ -2,14 +2,14 @@
 import os
 from datetime import datetime
 
-train_dir = "./dataset/train"
-val_dir   = "./dataset/val"
+train_dir = "./dataset/train_color"
+val_dir   = "./dataset/val_color"
 model_root = "./model_data"
 log_root   = "./logs"
 
 SUP_FLAG = 1  
-pic_size = (32, 32) 
-epochs = 10
+pic_size = (64, 64) 
+epochs = 20
 batch_size = 64
 learning_rate = 1e-3
 keep_prob_v = 0.7
@@ -38,7 +38,7 @@ import numpy as np
 from skimage.io import imread
 from skimage.transform import resize
 
-def list_images(d, exts=(".pgm",".png",".jpg",".jpeg",".bmp",".tif",".tiff")):
+def list_images(d, exts=(".pgm",".png",".jpg",".jpeg",".bmp",".tif",".tiff",".ppm",".pnm")):
     paths = []
     for ext in exts:
         paths.extend(glob.glob(os.path.join(d, f"*{ext}")))
@@ -47,7 +47,10 @@ def list_images(d, exts=(".pgm",".png",".jpg",".jpeg",".bmp",".tif",".tiff")):
 def load_gray_resized(paths, size_hw):
     arr = []
     for p in paths:
-        img = imread(p, as_gray=True)
+        img = imread(p)
+        img = img[..., :3]
+        img = img.astype(np.float32) / 255.0
+
         if img.dtype not in (np.float32, np.float64):
             img = img.astype(np.float32) / 255.0
         img = resize(img, (size_hw[0], size_hw[1]),

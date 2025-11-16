@@ -197,7 +197,7 @@ recon_images = reconstructed[idx]
 fig, axes = plt.subplots(nrows=2, ncols=10, sharex=True, sharey=True, figsize=(20,4))
 for images, row in zip([in_images, recon_images], axes):
     for img, ax in zip(images, row):
-        ax.imshow(img.reshape((*pic_size)), cmap='gray')
+        ax.imshow(img)
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
 fig.tight_layout(pad=0.1)

@@ -82,8 +82,8 @@ act_fun_out = tf.nn.relu     # output layer act_fun, for slm
 # act_fun_out = tf.nn.tanh     # output layer act_fun, for N-MNIST
 
 with tf.name_scope('inputs'):
-    inputs_ = tf.placeholder(tf.float32, (None, *pic_size, 1), name='inputs_')
-    targets_ = tf.placeholder(tf.float32, (None, *pic_size, 1), name='targets_')
+    inputs_ = tf.placeholder(tf.float32, (None, *pic_size, 3), name='inputs_')
+    targets_ = tf.placeholder(tf.float32, (None, *pic_size, 3), name='targets_')
     keep_prob = tf.placeholder(tf.float32)    #range 0.0-1.0
     mask_prob = tf.placeholder(tf.float32)    #range 0.0-1.0
     
@@ -121,7 +121,7 @@ with tf.name_scope('decoder'):
 
 # logits and outputs
 with tf.name_scope('outputs'):
-    logits_ = tf.layers.conv2d(conv6, 1, (3,3), padding='same', activation=None)
+    logits_ = tf.layers.conv2d(conv6, 3, (3,3), padding='same', activation=None)
 
     outputs_ = act_fun_out(logits_, name='outputs_')
 
@@ -148,8 +148,8 @@ print('train_x: ', train_x.shape, '\ttrain_y: ', train_y.shape,
 
 take = min(100, len(test_x))
 test_idx = np.linspace(0, len(test_x)-1, take).astype('int32')
-test_x1 = test_x[test_idx].reshape((-1, *pic_size, 1))
-test_y1 = test_y[test_idx].reshape((-1, *pic_size, 1))
+test_x1 = test_x[test_idx]
+test_y1 = test_y[test_idx]
 
 # data disp
 #for k in range(5):
@@ -185,18 +185,18 @@ summaryWriter(writer_tr, writer_te, merged, cost, test_feed_dict, test_feed_dict
 for e in range(1, 1+epochs):
     for batch_x, batch_y in my_io.batch_iter(batch_size, train_x, train_y, throw_insufficient=True):
         
-        x = batch_x.reshape((-1, *pic_size, 1))
-        y = batch_y.reshape((-1, *pic_size, 1))
+        x = batch_x
+        y = batch_y
             
         train_feed_dict = {inputs_: x, targets_: y, keep_prob: keep_prob_v, mask_prob: mask_prob_v}
         sess.run(optimizer, feed_dict=train_feed_dict)
         
-    if e%10 == 0: 
+    if e%2 == 0: 
         time_cost = time()-time_start
         summaryWriter(writer_tr, writer_te, merged, cost, train_feed_dict, test_feed_dict, e)
         
         res_imgs = sess.run(outputs_, feed_dict={inputs_: test_x1, targets_: test_y1,keep_prob:1.0, mask_prob: 0.0})
-        res_imgs = np.squeeze(res_imgs)
+        # res_imgs = np.squeeze(res_imgs)
 
         #psnr
         pred_clip = np.clip(res_imgs.astype(np.float32), 0.0, 1.0)
@@ -234,14 +234,14 @@ idx = np.linspace(start, end, 10).astype('int32')  # show 10 results at equal in
 in_imgs = test_x[idx]
 gt_imgs = test_y[idx]  
 
-reconstructed = sess.run(outputs_, feed_dict={inputs_: in_imgs.reshape((10, *pic_size, 1)), keep_prob: 1.0, mask_prob:0.0})
-reconstructed = np.squeeze(reconstructed)
+reconstructed = sess.run(outputs_, feed_dict={inputs_: in_imgs, keep_prob: 1.0, mask_prob:0.0})
+# reconstructed = np.squeeze(reconstructed)
 
     
 fig, axes = plt.subplots(nrows=3, ncols=10, sharex=True, sharey=True, figsize=(20,4))
 for images, row in zip([in_imgs, reconstructed, gt_imgs], axes):
     for img, ax in zip(images, row):
-        ax.imshow(img.reshape((*pic_size)), cmap='gray')
+        ax.imshow(img)
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
 fig.tight_layout(pad=0.1)

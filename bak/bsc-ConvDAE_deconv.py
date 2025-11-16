@@ -80,8 +80,8 @@ act_fun_out = tf.nn.relu     # output layer act_fun, for slm
 # net structure
 # input
 with tf.name_scope('inputs'):
-    inputs_ = tf.placeholder(tf.float32, (None, *pic_size, 1), name='inputs_')
-    targets_ = tf.placeholder(tf.float32, (None, *pic_size, 1), name='targets_')
+    inputs_ = tf.placeholder(tf.float32, (None, *pic_size, 3), name='inputs_')
+    targets_ = tf.placeholder(tf.float32, (None, *pic_size, 3), name='targets_')
     keep_prob = tf.placeholder(tf.float32)    #弃权概率0.0-1.0  1.0表示不使用弃权
     mask_prob = tf.placeholder(tf.float32)    #range 0.0-1.0
 
@@ -233,7 +233,7 @@ reconstructed = np.squeeze(reconstructed)
 fig, axes = plt.subplots(nrows=3, ncols=10, sharex=True, sharey=True, figsize=(20,4))
 for images, row in zip([in_imgs, reconstructed, gt_imgs], axes):
     for img, ax in zip(images, row):
-        ax.imshow(img.reshape((*pic_size)), cmap='gray')
+        ax.imshow(img)
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
 fig.tight_layout(pad=0.1)
