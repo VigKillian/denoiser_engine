@@ -9,9 +9,9 @@ log_root   = "./logs"
 
 SUP_FLAG = 1  
 pic_size = (128, 128) 
-epochs = 30
+epochs = 10
 batch_size = 64  #treat how many imgs for one time
-MAX_TRAIN = 3000   
+MAX_TRAIN = 1000   
 MAX_VAL   = 200 
 learning_rate = 1e-3
 keep_prob_v = 0.7
