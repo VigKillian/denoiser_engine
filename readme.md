@@ -42,3 +42,12 @@ pip install --no-cache-dir \
   "scikit-image==0.19.3" \
   "matplotlib==3.5.*"
 ```
+
+# Pour utiliser la predicteur(utiliser le modele qui est deja entraine)
+
+Faut d'abord installer cv2
+```bash
+pip install opencv-python
+
+# for arm : pip install opencv-python-headless
+```

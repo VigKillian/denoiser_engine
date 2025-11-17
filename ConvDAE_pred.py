@@ -57,8 +57,10 @@ data_path = "./dataset/single_molecule_localization/sml_test.mat" # for sml
 # data_path = "./dataset/N_MNIST_pic/N_MNIST_pic_test.mat" # for N-MNIST
 
 root_model_path = "model_data/"  # model's root dir
-model_dir = "bsc-ConvDAE(unsup)--02-24_10-33" # model'saving dir
-model_path = root_model_path + model_dir + "/"
+print('>>Enter the time of the model name (in model_data, find your model name and fill the time)')
+print('>>[bsc-ConvDAE(sup)--]mm-dd_hh-mm : ')
+model_dir = input() # model'saving dir
+model_path = root_model_path +"bsc-ConvDAE(sup)--"+model_dir + "/"
 
 # model
 model_name = 'my_model' #model's name
@@ -115,7 +117,7 @@ mean_cost = 0
 time_cost = 0
 reconstructed = np.zeros(in_imgs.shape, dtype='float32')
 for batch_x, _ in my_io.batch_iter(test_batch_size,in_imgs, in_imgs, shuffle=False):
-    x = batch_x.reshape((-1, *pic_size, 1))
+    x = batch_x.astype(np.float32)
     feed_dict = {inputs_: x, keep_prob:1.0, mask_prob:0.0} #for dropout
 #    feed_dict = {inputs_: x, targets_: y}  #for non dropout
     
@@ -140,7 +142,8 @@ if SAVE_FLAG:
     my_io.save_mat(pred_res_path +'recon.mat', data_save) 
      
     for i in range(len(reconstructed)): # save pics in the format of .png
-        plt_img.imsave(pred_res_path+'png'+str(i)+'.png', reconstructed[i], cmap=plt.cm.gray)
+        img = np.clip(reconstructed[i], 0.0, 1.0)
+        plt_img.imsave(pred_res_path + f'png{i}.png', img)
     print('\nreconstruction data saved to : \n',pred_res_path)
     
 
@@ -153,14 +156,14 @@ else:
     psnrs = []
     names = []
     for i in range(N):
-        gt = cv2.imread(gt_paths[i], 0)
+        gt = cv2.imread(gt_paths[i]) 
         if gt is None:
             continue
-        gt = gt.astype(np.float32) / 255.0
+        gt = cv2.cvtColor(gt, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
 
-        if gt.shape != tuple(pic_size):
-            from skimage.transform import resize
-            gt = resize(gt, tuple(pic_size), anti_aliasing=True).astype(np.float32)
+        
+        if gt.shape[:2] != tuple(pic_size):
+            gt = cv2.resize(gt, (pic_size[1], pic_size[0]))
 
         rec = np.clip(reconstructed[i].astype(np.float32), 0.0, 1.0)
 

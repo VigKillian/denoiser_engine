@@ -63,7 +63,7 @@ int main(int argc, char* argv[])
 
 
 
-	double sigma_bruit = 10.0;
+	double sigma_bruit = 15.0;
 
 	std::mt19937 rng(12345);
 	std::normal_distribution<double> gauss(0.0, sigma_bruit);

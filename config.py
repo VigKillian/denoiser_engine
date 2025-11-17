@@ -2,15 +2,17 @@
 import os
 from datetime import datetime
 
-train_dir = "./dataset/train_color"
-val_dir   = "./dataset/val_color"
+train_dir = "./dataset/train_color_128"
+val_dir   = "./dataset/val_color_128"
 model_root = "./model_data"
 log_root   = "./logs"
 
 SUP_FLAG = 1  
-pic_size = (64, 64) 
-epochs = 40
-batch_size = 64
+pic_size = (128, 128) 
+epochs = 30
+batch_size = 64  #treat how many imgs for one time
+MAX_TRAIN = 3000   
+MAX_VAL   = 200 
 learning_rate = 1e-3
 keep_prob_v = 0.7
 mask_prob_v = 0.0 if SUP_FLAG else 0.3
@@ -66,14 +68,18 @@ def _stem(path):
 def _strip_noise_suffix(stem_str, suffix="_noise"):
     return stem_str[:-len(suffix)] if stem_str.endswith(suffix) else stem_str
 
-def build_pairs(noisy_dir, clean_dir, size_hw):
+def build_pairs(noisy_dir, clean_dir, size_hw, limit=None):
     noisy_list = list_images(noisy_dir)
     clean_list = list_images(clean_dir)
-    noisy_map = {_strip_noise_suffix(_stem(p)): p for p in noisy_list}  # class1_0_noise -> class1_0
+    noisy_map = {_strip_noise_suffix(_stem(p)): p for p in noisy_list}
     clean_map = {_stem(p): p for p in clean_list}
     keys = sorted(set(noisy_map) & set(clean_map))
     if not keys:
         raise RuntimeError("No filename pairs matched between noisy/*_noise and imgs/*")
+    
+    if limit is not None:
+        keys = keys[:limit]
+
     X = load_gray_resized([noisy_map[k] for k in keys], size_hw)
     Y = load_gray_resized([clean_map[k] for k in keys], size_hw)
     return X, Y
@@ -86,9 +92,11 @@ def build_datasets():
     size = pic_size
     if SUP_FLAG:
         train_x, train_y = build_pairs(os.path.join(train_dir, "noisy"),
-                                       os.path.join(train_dir, "imgs"), size)
+                                       os.path.join(train_dir, "imgs"),
+                                       size, limit=MAX_TRAIN)
         test_x,  test_y  = build_pairs(os.path.join(val_dir, "noisy"),
-                                       os.path.join(val_dir, "imgs"),  size)
+                                       os.path.join(val_dir, "imgs"),
+                                       size, limit=MAX_VAL)
     else:
         train_x, train_y = build_unsup(os.path.join(train_dir, "imgs"), size)
         test_x,  test_y  = build_unsup(os.path.join(val_dir, "imgs"),  size)
