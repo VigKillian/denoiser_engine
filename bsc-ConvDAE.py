@@ -10,6 +10,18 @@ Author: zhihong (z_zhi_hong@163.com)
 Date: 20190505
 Modified: zhihong_20210223
 
+in="dataset/train_color_128/noisy"
+out="dataset/val_color_128/noisy"
+k=200
+mkdir -p "$out"
+N=$(find "$in" -maxdepth 1 -type f | wc -l)
+stride=$(( (N + k - 1) / k ))
+
+find "$in" -maxdepth 1 -type f -print0 \
+| sort -z \
+| awk -v RS='\0' -v ORS='\0' -v s="$stride" -v k="$k" 'NR % s == 1 { print; c++; if (c>=k) exit }' \
+| xargs -0 -I{} mv "{}" "$out"/
+
 '''
 
 # In[]:
@@ -90,51 +102,79 @@ with tf.name_scope('inputs'):
 # net structure
 # Encoder
 with tf.name_scope('encoder'):
-    drop = tf.nn.dropout(inputs_, 1-mask_prob)  #unsupervised：randomly masked
+    drop = tf.nn.dropout(inputs_, 1-mask_prob)  # unsupervised：randomly masked
 
     conv1 = tf.layers.conv2d(drop, 64, (3,3), padding='same', activation=act_fun)
-    # conv1 = tf.nn.dropout(conv1, keep_prob)
     max_p1 = tf.layers.max_pooling2d(conv1, (2,2), (2,2), padding='same')
 
     conv2 = tf.layers.conv2d(max_p1, 32, (3,3), padding='same', activation=act_fun)
-    # conv2 = tf.nn.dropout(conv2, keep_prob)
     max_p2 = tf.layers.max_pooling2d(conv2, (2,2), (2,2), padding='same')
 
     conv3 = tf.layers.conv2d(max_p2, 16, (3,3), padding='same', activation=act_fun)
-    # conv3 = tf.nn.dropout(conv3, keep_prob)
     max_p3 = tf.layers.max_pooling2d(conv3, (2,2), (2,2), padding='same')
+    # max_p3 shape: [batch, H/8, W/8, 16] si pic_size=(64,64)
 
-# Decoder
+
+with tf.name_scope('latent'):
+    # encoder 
+    flat = tf.layers.flatten(max_p3)    # [batch, H/8 * W/8 * 16]
+
+    latent_dim = 128   #  32/64/256 
+
+    z_mu     = tf.layers.dense(flat, latent_dim, name='z_mu')
+    z_logvar = tf.layers.dense(flat, latent_dim, name='z_logvar')
+
+    # reparameterization trick: z = mu + sigma * eps
+    eps = tf.random_normal(tf.shape(z_mu))
+    z = z_mu + tf.exp(0.5 * z_logvar) * eps
+
 up1, up2, up3 = cfg.upsample_sizes()
+H, W = pic_size
+enc_H = H // 8
+enc_W = W // 8
+enc_C = 16     
+enc_flat_dim = enc_H * enc_W * enc_C
+
 with tf.name_scope('decoder'):
-    res4 = tf.image.resize_nearest_neighbor(max_p3, up1)
+    fc = tf.layers.dense(z, enc_flat_dim, activation=act_fun, name='z_to_feature')
+    dec_in = tf.reshape(fc, (-1, enc_H, enc_W, enc_C))
+
+    res4 = tf.image.resize_nearest_neighbor(dec_in, up1)
     conv4 = tf.layers.conv2d(res4, 16, (3,3), padding='same', activation=act_fun)
-    # conv4 = tf.nn.dropout(conv4, keep_prob)
 
     res5 = tf.image.resize_nearest_neighbor(conv4, up2)
     conv5 = tf.layers.conv2d(res5, 32, (3,3), padding='same', activation=act_fun)
-    # conv5 = tf.nn.dropout(conv5, keep_prob)
 
     res6 = tf.image.resize_nearest_neighbor(conv5, up3)
     conv6 = tf.layers.conv2d(res6, 64, (3,3), padding='same', activation=act_fun)
-    # conv6 = tf.nn.dropout(conv6, keep_prob)
 
-# logits and outputs
+# ----------  ----------
 with tf.name_scope('outputs'):
     logits_ = tf.layers.conv2d(conv6, 3, (3,3), padding='same', activation=None)
-
     outputs_ = act_fun_out(logits_, name='outputs_')
 
-# loss and Optimizer
+# ---------- VAE  loss ----------
 with tf.name_scope('loss'):
-#     loss = tf.nn.sigmoid_cross_entropy_with_logits(labels=targets_, logits=logits_)
-#     loss = tf.reduce_sum(tf.square(targets_ -  outputs_))
-
-    loss = tf.losses.mean_squared_error(targets_ , outputs_)
-
-    cost = tf.reduce_mean(loss)
-    tf.summary.scalar('cost', cost)
     
+    recon_per_sample = tf.reduce_sum(
+        tf.square(targets_ - outputs_),
+        axis=[1, 2, 3]
+    )
+    recon_loss = tf.reduce_mean(recon_per_sample, name='recon_loss')
+
+    kl_per_sample = -0.5 * tf.reduce_sum(
+        1.0 + z_logvar - tf.square(z_mu) - tf.exp(z_logvar),
+        axis=1
+    )
+    kl_loss = tf.reduce_mean(kl_per_sample, name='kl_loss')
+
+    beta = 1e-3   #  1e-4, 5e-4, 1e-3
+    cost = recon_loss + beta * kl_loss
+
+    tf.summary.scalar('recon_loss', recon_loss)
+    tf.summary.scalar('kl_loss', kl_loss)
+    tf.summary.scalar('cost', cost)
+
 with tf.name_scope('train'):
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
 
