@@ -8,7 +8,11 @@ Les comptes rendus sont disponible dans le répertoire correspondant.
 slides : https://docs.google.com/presentation/d/1ieagxBHYyKp3GInJJxnne_svQI6RG-Uf5wT322rOXIE/edit?usp=sharing
 
 # Pour l'exécuter
-## Créer un environnement
+```bash
+python train_denoise_vae.py
+```
+
+<!-- ## Créer un environnement
 
 ```bash
 conda create -n convdae_py37 python=3.7 -y
@@ -50,4 +54,4 @@ Faut d'abord installer cv2
 pip install opencv-python
 
 # for arm : pip install opencv-python-headless
-```
+``` -->
