@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 import torchvision.utils as vutils
 from datetime import datetime
+import time
 
 from denoise_vae_model import (
     DenoisePairDataset,
@@ -11,6 +12,14 @@ from denoise_vae_model import (
     train_epoch,
     eval_epoch,
 )
+
+from math import log10
+
+def compute_psnr(recon, target):
+    mse = torch.mean((recon - target) ** 2).item()
+    if mse == 0:
+        return float("inf")
+    return 10 * log10(1.0 / mse)  # data in [0,1]
 
 
 @torch.no_grad()
@@ -61,9 +70,9 @@ def main():
     max_val   = None           
     img_size   = 64
     nb_channels_base = 32   # if 32 : 3->32->32*2->32*4 --> 32*2->32->3
-    latent_dim = 128
-    batch_size = 16
-    epochs     = 40
+    latent_dim = 256
+    batch_size = 12
+    epochs     = 50
     lr         = 1e-3
     beta       = 1e-5          # KL
     # =================================
@@ -75,6 +84,7 @@ def main():
     run_id = datetime.now().strftime("%m-%d_%H-%M")
     results_root = os.path.join("results", run_id)
     ckpt_root    = os.path.join("checkpoints", run_id)
+    dat_root     = "histos"
 
     os.makedirs(results_root, exist_ok=True)
     os.makedirs(ckpt_root, exist_ok=True)
@@ -102,13 +112,32 @@ def main():
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
+    # histoPath = os.path.join(dat_root, run_id)
+    # os.makedirs(histoPath, exist_ok=True)
+
     for epoch in range(1, epochs + 1):
+
+        timer_start = time.time()
+
         tr_loss, tr_rec, tr_kl = train_epoch(
             model, train_loader, optimizer, device, beta=beta
         )
         vl_loss, vl_rec, vl_kl = eval_epoch(
             model, test_loader, device, beta=beta
         )
+
+        # compute PSNR on validation set
+        model.eval()
+        psnr_vals = []
+
+        with torch.no_grad():
+            for noisy, clean in test_loader:
+                noisy = noisy.to(device)
+                clean = clean.to(device)
+                recon, _, _ = model(noisy)
+                psnr_vals.append(compute_psnr(recon, clean))
+
+        val_psnr = sum(psnr_vals) / len(psnr_vals)
 
         print(
             f"[Epoch {epoch:03d}] "
@@ -124,10 +153,20 @@ def main():
 
         if epoch % 2 == 0 or epoch == epochs:
             ckpt_path = os.path.join(
-                ckpt_root, f"denoise_vae_epoch{epoch:03d}.pth"
+                ckpt_root, f"denoise_vae_epoch{epoch:3d}.pth"
             )
             torch.save(model.state_dict(), ckpt_path)
             print("Saved:", ckpt_path)
+
+        timer_end = time.time()
+        print("Time : ", timer_end-timer_start)
+        print(f"  >> PSNR = {val_psnr:.3f} dB")
+
+        log_path = os.path.join(dat_root, f"{run_id}.dat")
+
+        with open(log_path, "a") as f:
+            f.write(f"{epoch} {val_psnr:.3f}\n")
+
 
     print("Training finished.")
 

@@ -5,6 +5,8 @@ gaussNoise/output_images_pepperSalt
 data_color_64
 dataset_color
 train
+checkpoints
+histos
 
 ttt.txt
 \results
