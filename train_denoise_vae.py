@@ -68,7 +68,7 @@ def main():
     root_dir   = "./dataset"  
     max_train = None           
     max_val   = None           
-    img_size   = 64
+    img_size   = 128
     nb_channels_base = 32   # if 32 : 3->32->32*2->32*4 --> 32*2->32->3
     latent_dim = 256
     batch_size = 12
@@ -94,10 +94,10 @@ def main():
     # ==========================================
 
     train_set = DenoisePairDataset(
-        root_dir, split="train_color", img_size=img_size, max_pairs=max_train
+        root_dir, split="train_color_128", img_size=img_size, max_pairs=max_train
     )
     test_set  = DenoisePairDataset(
-        root_dir, split="val_color",   img_size=img_size, max_pairs=max_val
+        root_dir, split="val_color_128",   img_size=img_size, max_pairs=max_val
     )
 
     train_loader = DataLoader(
