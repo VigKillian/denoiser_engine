@@ -35,7 +35,7 @@ int main(int argc, char* argv[])
 	lire_image_ppm(cNomImgLue, ImgIn, nH * nW);
 	allocation_tableau(ImgOut, OCTET, nTaille3);
 
-	double amplitude = 15.0;                  // A : force du bruit (0..255)
+	double amplitude = 50.0;                  // A : force du bruit (0..255)
 	std::mt19937 rng(12345);                  // graine (fixe pour reproductible)
 	std::uniform_real_distribution<double> uni(-amplitude, amplitude);
 

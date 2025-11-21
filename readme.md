@@ -12,6 +12,8 @@ slides : https://docs.google.com/presentation/d/1ieagxBHYyKp3GInJJxnne_svQI6RG-U
 python train_denoise_vae.py
 ```
 
+
+
 <!-- ## Créer un environnement
 
 ```bash
