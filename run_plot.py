@@ -1,9 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 print("Enter the file name : [format]mm-dd_hh-mm")
 file_time = input()
 data = np.loadtxt("histos/"+file_time+".dat")
+curve_root    = os.path.join("curve", file_time)
+os.makedirs(curve_root, exist_ok=True)
 epoch      = data[:, 0]
 G_total    = data[:, 1]
 D_loss     = data[:, 2]
@@ -19,7 +22,7 @@ plt.ylabel("Loss")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("loss_curves.png")
+plt.savefig("./curve/"+file_time+"/loss_curves.png")
 
 plt.figure()
 plt.plot(epoch, recon,    label="Train recon MSE")
@@ -29,4 +32,4 @@ plt.ylabel("Loss")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("loss_recon_val.png")
+plt.savefig("./curve/"+file_time+"/loss_recon_val.png")
