@@ -69,7 +69,7 @@ def save_recon_examples(model, loader, device, epoch, out_dir="results", n_show=
 def main():
     # ===== config =====
     root_dir   = "./dataset"  
-    max_train = None           
+    max_train = 1000           
     max_val   = None           
     img_size   = 128
     nb_channels_base = 32   # if 32 : 3->32->32*2->32*4 --> 32*2->32->3
@@ -78,6 +78,8 @@ def main():
     epochs     = 50
     lr         = 1e-3
     beta       = 1e-5          # KL
+    # lambda_gan = 1e-5          # lambda for GAN
+    lambda_gan = 0          # lambda for GAN
     # =================================
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -136,7 +138,7 @@ def main():
             loader=train_loader,
             device=device,
             beta=beta,
-            lambda_gan=1e-5,
+            lambda_gan=lambda_gan,
         )
         vl_loss, vl_rec, vl_kl = eval_epoch(
             model, test_loader, device, beta=beta
