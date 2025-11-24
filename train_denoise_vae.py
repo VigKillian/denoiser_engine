@@ -8,10 +8,13 @@ import time
 
 from denoise_vae_model import (
     DenoisePairDataset,
+    ConvoGan,
     ConvDenoiseVAE,
     train_epoch,
     eval_epoch,
+    train_epoch_withGan,
 )
+
 
 from math import log10
 
@@ -66,7 +69,7 @@ def save_recon_examples(model, loader, device, epoch, out_dir="results", n_show=
 def main():
     # ===== config =====
     root_dir   = "./dataset"  
-    max_train = None           
+    max_train = 1000           
     max_val   = None           
     img_size   = 128
     nb_channels_base = 32   # if 32 : 3->32->32*2->32*4 --> 32*2->32->3
@@ -75,6 +78,8 @@ def main():
     epochs     = 50
     lr         = 1e-3
     beta       = 1e-5          # KL
+    # lambda_gan = 1e-5          # lambda for GAN
+    lambda_gan = 0          # lambda for GAN
     # =================================
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -112,6 +117,12 @@ def main():
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 
+    discriminator = ConvoGan(
+        img_channels=3, img_size=img_size, nb_channels_base=nb_channels_base
+    ).to(device)
+    optimizer_G = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr)
+
     # histoPath = os.path.join(dat_root, run_id)
     # os.makedirs(histoPath, exist_ok=True)
 
@@ -119,8 +130,15 @@ def main():
 
         timer_start = time.time()
 
-        tr_loss, tr_rec, tr_kl = train_epoch(
-            model, train_loader, optimizer, device, beta=beta
+        stats = train_epoch_withGan(
+            vae_model=model,
+            discriminator=discriminator,
+            optimizer_G=optimizer_G,
+            optimizer_D=optimizer_D,
+            loader=train_loader,
+            device=device,
+            beta=beta,
+            lambda_gan=lambda_gan,
         )
         vl_loss, vl_rec, vl_kl = eval_epoch(
             model, test_loader, device, beta=beta
@@ -141,7 +159,9 @@ def main():
 
         print(
             f"[Epoch {epoch:03d}] "
-            f"Train loss={tr_loss:.6f} (recon={tr_rec:.6f}, KL={tr_kl:.6f}) | "
+            f"Train G_total={stats['G_total']:.6f} "
+            f"(recon={stats['recon']:.6f}, KL={stats['kl']:.6f}, GAN_G={stats['gan_G']:.6f}) | "
+            f"D_loss={stats['D_loss']:.6f} | "
             f"Val loss={vl_loss:.6f} (recon={vl_rec:.6f}, KL={vl_kl:.6f})"
         )
 
@@ -165,8 +185,15 @@ def main():
         log_path = os.path.join(dat_root, f"{run_id}.dat")
 
         with open(log_path, "a") as f:
-            f.write(f"{epoch} {tr_loss:.3f}\n")
-            f.write(f"{epoch} {vl_loss:.3f}\n")
+                f.write(
+                    f"{epoch} "
+                    f"{stats['G_total']:.6f} "
+                    f"{stats['D_loss']:.6f} "
+                    f"{stats['gan_G']:.6f} "
+                    f"{stats['recon']:.6f} "
+                    f"{vl_loss:.6f} \n"
+                )
+
 
 
     print("Training finished.")

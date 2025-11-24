@@ -35,7 +35,7 @@ int main(int argc, char* argv[])
 	lire_image_ppm(cNomImgLue, ImgIn, nH * nW);
 	allocation_tableau(ImgOut, OCTET, nTaille3);
 		
-	double p = 0.05;                          // 5% des pixels bruités
+	double p = 0.2;                          // 5% des pixels bruités
 	std::mt19937 rng(12345);
 	std::uniform_real_distribution<double> u01(0.0, 1.0);
 

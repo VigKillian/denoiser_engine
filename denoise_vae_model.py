@@ -195,6 +195,50 @@ class ConvDenoiseVAE(nn.Module):
         recon = self.decode(z, skips)
         return recon, mu, logvar
 
+# =====================
+# GAN
+# =====================
+
+adversarial_loss = torch.nn.BCELoss()
+
+class ConvoGan(nn.Module):
+    def __init__(self, img_channels=3, img_size=64, nb_channels_base=32):
+        super().__init__()
+        self.img_channels = img_channels
+        self.img_size = img_size
+        self.nb_channels_base = nb_channels_base
+
+        # -------------------------
+        # Encoder: downsampling + store skip features
+        # -------------------------
+        self.features = nn.Sequential(
+            nn.Conv2d(img_channels, nb_channels_base, kernel_size=4, stride=2, padding=1),  # 128 -> 64
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(nb_channels_base, nb_channels_base * 2, kernel_size=4, stride=2, padding=1),  # 64 -> 32
+            nn.BatchNorm2d(nb_channels_base * 2),
+            nn.LeakyReLU(0.2, inplace=True),
+
+            nn.Conv2d(nb_channels_base * 2, nb_channels_base * 4, kernel_size=4, stride=2, padding=1),  # 32 -> 16
+            nn.BatchNorm2d(nb_channels_base * 4),
+            nn.LeakyReLU(0.2, inplace=True),
+        )
+
+        self.enc_feat_h = img_size // 8
+        self.enc_feat_w = img_size // 8
+        enc_flat_dim = nb_channels_base* 4 * self.enc_feat_h * self.enc_feat_w
+
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(enc_flat_dim, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        feat = self.features(x)
+        validity = self.classifier(feat)  # [B,1]
+        return validity
+
 
 # =====================
 # 3. loss + train/eval per epoch
@@ -230,6 +274,66 @@ def train_epoch(model, loader, optimizer, device, beta=1e-4):
 
     n = len(loader.dataset)
     return total_loss / n, total_recon / n, total_kl / n
+
+
+def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loader,device, beta=1e-4,lambda_gan=1e-3):
+    vae_model.train()
+    discriminator.train()
+    total_G = total_recon = total_kl = total_gan_G = 0.0
+    total_D = 0.0
+
+    for noisy, clean in loader:
+        noisy = noisy.to(device)
+        clean = clean.to(device)
+        bs = noisy.size(0)
+
+        # ========start training GAN========
+
+        optimizer_D.zero_grad()
+
+        valid = torch.ones(bs, 1, device=device)
+        fake  = torch.zeros(bs, 1, device=device)
+
+        pred_real = discriminator(clean)
+        loss_D_real = adversarial_loss(pred_real, valid)
+
+        with torch.no_grad():
+            recon_fake, mu_tmp, logvar_tmp = vae_model(noisy)
+        pred_fake = discriminator(recon_fake.detach())
+        loss_D_fake = adversarial_loss(pred_fake, fake)
+
+        loss_D = 0.5 * (loss_D_real + loss_D_fake)
+        loss_D.backward()
+        optimizer_D.step()
+
+        # ========fin training GAN========
+
+        optimizer_G.zero_grad()
+        recon, mu, logvar = vae_model(noisy)
+        vae_total, recon_loss, kl_loss = vae_loss(recon, clean, mu, logvar, beta=beta)
+
+        # try to let fake img fool discriminator
+        pred_fake_for_G = discriminator(recon)
+        gan_loss_G = adversarial_loss(pred_fake_for_G, valid)
+        loss_total = vae_total + lambda_gan * gan_loss_G
+
+        loss_total.backward()
+        optimizer_G.step()
+
+        total_G     += loss_total.item()   * bs
+        total_recon += recon_loss.item()  * bs
+        total_kl    += kl_loss.item()     * bs
+        total_gan_G  += gan_loss_G.item()   * bs
+        total_D      += loss_D.item()       * bs
+
+    n = len(loader.dataset)
+    return {
+        "G_total": total_G / n,
+        "recon":   total_recon / n,
+        "kl":      total_kl / n,
+        "gan_G":   total_gan_G / n,
+        "D_loss":  total_D / n,
+    }
 
 
 @torch.no_grad()
