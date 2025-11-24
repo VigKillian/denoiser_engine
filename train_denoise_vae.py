@@ -165,7 +165,8 @@ def main():
         log_path = os.path.join(dat_root, f"{run_id}.dat")
 
         with open(log_path, "a") as f:
-            f.write(f"{epoch} {val_psnr:.3f}\n")
+            f.write(f"{epoch} {tr_loss:.3f}\n")
+            f.write(f"{epoch} {vl_loss:.3f}\n")
 
 
     print("Training finished.")
