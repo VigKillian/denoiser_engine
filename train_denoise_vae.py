@@ -69,7 +69,7 @@ def save_recon_examples(model, loader, device, epoch, out_dir="results", n_show=
 def main():
     # ===== config =====
     root_dir   = "./dataset"  
-    max_train = 1000           
+    max_train = None           
     max_val   = None           
     img_size   = 128
     nb_channels_base = 32   # if 32 : 3->32->32*2->32*4 --> 32*2->32->3
@@ -126,6 +126,8 @@ def main():
     # histoPath = os.path.join(dat_root, run_id)
     # os.makedirs(histoPath, exist_ok=True)
 
+    val_loss_min = 99.99
+    best_epoch = -1
     for epoch in range(1, epochs + 1):
 
         timer_start = time.time()
@@ -143,6 +145,9 @@ def main():
         vl_loss, vl_rec, vl_kl = eval_epoch(
             model, test_loader, device, beta=beta
         )
+        if (val_loss_min>vl_loss):
+            val_loss_min = vl_loss
+            best_epoch = epoch
 
         # compute PSNR on validation set
         model.eval()
@@ -171,12 +176,7 @@ def main():
                 epoch, out_dir=results_root, n_show=8
             )
 
-        if epoch % 2 == 0 or epoch == epochs:
-            ckpt_path = os.path.join(
-                ckpt_root, f"denoise_vae_epoch{epoch:3d}.pth"
-            )
-            torch.save(model.state_dict(), ckpt_path)
-            print("Saved:", ckpt_path)
+        
 
         timer_end = time.time()
         print("Time : ", timer_end-timer_start)
@@ -196,7 +196,13 @@ def main():
 
 
 
-    print("Training finished.")
+    print("Training finished. Best epoch is : ",best_epoch) 
+    
+    ckpt_path = os.path.join(
+        ckpt_root, f"denoise_vae_epoch{best_epoch:3d}.pth"
+    )
+    torch.save(model.state_dict(), ckpt_path)
+    print("Saved the checkpoint of best epoch:", ckpt_path)
 
 
 if __name__ == "__main__":

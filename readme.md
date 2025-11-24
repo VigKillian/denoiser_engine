@@ -57,3 +57,16 @@ pip install opencv-python
 
 # for arm : pip install opencv-python-headless
 ``` -->
+
+
+noisy_fort 
+11-24_10-18  GAN best epoch : 30
+11-24_11-09  VAE best epoch : 40
+
+noisy2_fort
+11-24_11-34  GAN best epoch : 49
+11-24_11-35  VAE best epoch : 44
+
+noisy3_fort
+11-24_12-00  GAN best epoch : 17
+11-24_12-01  VAE best epoch : 44
