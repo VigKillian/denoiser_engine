@@ -78,6 +78,7 @@ def main():
     epochs     = 50
     lr         = 1e-3
     beta       = 1e-5          # KL
+    
     # =================================
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
