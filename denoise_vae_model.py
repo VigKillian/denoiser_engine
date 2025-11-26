@@ -276,7 +276,7 @@ def train_epoch(model, loader, optimizer, device, beta=1e-4):
     return total_loss / n, total_recon / n, total_kl / n
 
 
-def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loader,device, beta=1e-4,lambda_gan=1e-3, k_G=3, k_D=1):
+def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loader,device, beta=1e-4,lambda_gan=1e-3, k_G=2, k_D=1):
     vae_model.train()
     discriminator.train()
     total_G = total_recon = total_kl = total_gan_G = 0.0

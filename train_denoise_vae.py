@@ -80,6 +80,7 @@ def main():
     beta       = 1e-5          # KL
     lambda_gan = 1e-4          # lambda for GAN
     # lambda_gan = 0          # lambda for GAN
+    pretrain_epochs = 25 
     # =================================
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -132,7 +133,8 @@ def main():
 
         timer_start = time.time()
 
-        if lambda_gan == 0:
+        if epoch <= pretrain_epochs:
+            current_lambda_gan = 0.0
             tr_loss, tr_rec, tr_kl = train_epoch(
                 model, train_loader, optimizer, device, beta=beta
             )
@@ -143,7 +145,9 @@ def main():
                 "gan_G":   0.0,
                 "D_loss":  0.0,
             }
+
         else:
+            current_lambda_gan = lambda_gan
             stats = train_epoch_withGan(
                 vae_model=model,
                 discriminator=discriminator,
@@ -152,7 +156,7 @@ def main():
                 loader=train_loader,
                 device=device,
                 beta=beta,
-                lambda_gan=lambda_gan,
+                lambda_gan=current_lambda_gan,
             )
         vl_loss, vl_rec, vl_kl = eval_epoch(
             model, test_loader, device, beta=beta
