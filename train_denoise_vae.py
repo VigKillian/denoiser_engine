@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 import torchvision.utils as vutils
 from datetime import datetime
 import time
+import cv2
 
 from denoise_vae_model import (
     DenoisePairDataset,

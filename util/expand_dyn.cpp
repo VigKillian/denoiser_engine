@@ -14,6 +14,7 @@ void rechercheMinMax(OCTET* ImgIn, int n, int& xminR, int& xminG, int& xminB, in
     }
 }
 
+
 int main(int argc, char* argv[])
 {
   char cNomImgLue[250], cNomImgEcrite[250];
@@ -38,13 +39,13 @@ int main(int argc, char* argv[])
     lire_image_ppm(cNomImgLue, ImgIn, nH * nW);
     allocation_tableau(ImgOut, OCTET, nTaille3);
 
-    for(int i = 0; i<nTaille3; i++){
-        ImgOut[i] = (float)ImgIn[i] / 50.0;
-    }
+    // for(int i = 0; i<nTaille3; i++){
+    //     ImgOut[i] = (float)ImgIn[i] / 50.0;
+    // }
 
     int xminR = 255; int xminG = 255; int xminB = 255; int xmaxR = 0; int xmaxG = 0; int xmaxB = 0;
 
-    rechercheMinMax(ImgOut, nTaille, xminR, xminG, xminB, xmaxR, xmaxG, xmaxB);
+    rechercheMinMax(ImgIn, nTaille, xminR, xminG, xminB, xmaxR, xmaxG, xmaxB);
 
     std::cout<<"Min R : "<< xminR << ", min G : " << xminG << ", min B : "<<xminB<<", max R : "<<xmaxR<<", max G : "<<xmaxG<<", max B : "<<xmaxB<<std::endl;
 
@@ -54,9 +55,9 @@ int main(int argc, char* argv[])
     std::cout<<"Alpha R: "<<alphaR<<", alpha G : "<<alphaG<<", alpha B : "<<alphaB<<", beta R : "<<betaR<<", beta G : "<<betaG<<", beta B : "<<betaB<<std::endl;
 
     for(int i = 0; i<nTaille; i++){
-        ImgOut[3*i] = (OCTET) alphaR + betaR*ImgOut[3*i];
-        ImgOut[3*i+1] = (OCTET) alphaG + betaG*ImgOut[3*i+1];
-        ImgOut[3*i+2] = (OCTET) alphaB + betaB*ImgOut[3*i+2];
+        ImgOut[3*i] = (OCTET) alphaR + betaR*ImgIn[3*i];
+        ImgOut[3*i+1] = (OCTET) alphaG + betaG*ImgIn[3*i+1];
+        ImgOut[3*i+2] = (OCTET) alphaB + betaB*ImgIn[3*i+2];
     }
     
     ecrire_image_ppm(cNomImgEcrite, ImgOut,  nH, nW);
