@@ -276,11 +276,13 @@ def train_epoch(model, loader, optimizer, device, beta=1e-4):
     return total_loss / n, total_recon / n, total_kl / n
 
 
-def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loader,device, beta=1e-4,lambda_gan=1e-3):
+def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loader,device, beta=1e-4,lambda_gan=1e-3, k_G=3, k_D=1):
     vae_model.train()
     discriminator.train()
     total_G = total_recon = total_kl = total_gan_G = 0.0
     total_D = 0.0
+    step = 0
+    D_count = 0
 
     for noisy, clean in loader:
         noisy = noisy.to(device)
@@ -288,51 +290,65 @@ def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loade
         bs = noisy.size(0)
 
         # ========start training GAN========
+        if step % (k_G + k_D) < k_D:
+            optimizer_D.zero_grad()
 
-        optimizer_D.zero_grad()
+            valid = torch.ones(bs, 1, device=device)
+            fake  = torch.zeros(bs, 1, device=device)
 
-        valid = torch.ones(bs, 1, device=device)
-        fake  = torch.zeros(bs, 1, device=device)
+            # Real
+            pred_real = discriminator(clean)
+            loss_D_real = adversarial_loss(pred_real, valid)
 
-        pred_real = discriminator(clean)
-        loss_D_real = adversarial_loss(pred_real, valid)
+            with torch.no_grad():
+                recon_fake, _, _ = vae_model(noisy)
+            pred_fake = discriminator(recon_fake.detach())
+            loss_D_fake = adversarial_loss(pred_fake, fake)
 
-        with torch.no_grad():
-            recon_fake, mu_tmp, logvar_tmp = vae_model(noisy)
-        pred_fake = discriminator(recon_fake.detach())
-        loss_D_fake = adversarial_loss(pred_fake, fake)
+            loss_D = 0.5 * (loss_D_real + loss_D_fake)
+            loss_D.backward()
+            optimizer_D.step()
 
-        loss_D = 0.5 * (loss_D_real + loss_D_fake)
-        loss_D.backward()
-        optimizer_D.step()
+            total_D += loss_D.item() * bs
+            D_count += bs
+
 
         # ========fin training GAN========
+        else:
+            optimizer_G.zero_grad()
 
-        optimizer_G.zero_grad()
-        recon, mu, logvar = vae_model(noisy)
-        vae_total, recon_loss, kl_loss = vae_loss(recon, clean, mu, logvar, beta=beta)
+            recon, mu, logvar = vae_model(noisy)
+            vae_total, recon_loss, kl_loss = vae_loss(
+                recon, clean, mu, logvar, beta=beta
+            )
 
-        # try to let fake img fool discriminator
-        pred_fake_for_G = discriminator(recon)
-        gan_loss_G = adversarial_loss(pred_fake_for_G, valid)
-        loss_total = vae_total + lambda_gan * gan_loss_G
+            valid = torch.ones(bs, 1, device=device)
+            pred_fake_for_G = discriminator(recon)
+            gan_loss_G = adversarial_loss(pred_fake_for_G, valid)
 
-        loss_total.backward()
-        optimizer_G.step()
+            loss_total = vae_total + lambda_gan * gan_loss_G
+            loss_total.backward()
+            optimizer_G.step()
 
-        total_G     += loss_total.item()   * bs
-        total_recon += recon_loss.item()  * bs
-        total_kl    += kl_loss.item()     * bs
-        total_gan_G  += gan_loss_G.item()   * bs
-        total_D      += loss_D.item()       * bs
+            total_G     += loss_total.item()  * bs
+            total_recon += recon_loss.item()  * bs
+            total_kl    += kl_loss.item()     * bs
+            total_gan_G += gan_loss_G.item()  * bs
+
+        step += 1
 
     n = len(loader.dataset)
+    if D_count > 0:
+        D_epoch = total_D / D_count
+    else:
+        D_epoch = 0.0
+
     return {
         "G_total": total_G / n,
         "recon":   total_recon / n,
         "kl":      total_kl / n,
         "gan_G":   total_gan_G / n,
-        "D_loss":  total_D / n,
+        "D_loss":  D_epoch,
     }
 
 
