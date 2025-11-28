@@ -5,7 +5,6 @@ from torch.utils.data import DataLoader
 import torchvision.utils as vutils
 from datetime import datetime
 import time
-import cv2
 
 from denoise_vae_model import (
     DenoisePairDataset,
@@ -14,6 +13,7 @@ from denoise_vae_model import (
     train_epoch,
     eval_epoch,
     train_epoch_withGan,
+    pretrain_discriminator,
 )
 
 
@@ -76,12 +76,14 @@ def main():
     nb_channels_base = 32   # if 32 : 3->32->32*2->32*4 --> 32*2->32->3
     latent_dim = 256
     batch_size = 12
-    epochs     = 50
+    pretrain_vae_epochs = 60 
+    gan_finetune_epochs = 0
+    d_warmup_steps      = 500
     lr         = 1e-3
     beta       = 1e-5          # KL
     lambda_gan = 1e-4          # lambda for GAN
     # lambda_gan = 0          # lambda for GAN
-    pretrain_epochs = 25 
+    pretrain_epochs = 0 
     # =================================
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -117,54 +119,42 @@ def main():
     model = ConvDenoiseVAE(
         img_channels=3, img_size=img_size, latent_dim=latent_dim, nb_channels_base = nb_channels_base
     ).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer_vae = torch.optim.Adam(model.parameters(), lr=lr)
 
     discriminator = ConvoGan(
         img_channels=3, img_size=img_size, nb_channels_base=nb_channels_base
     ).to(device)
-    optimizer_G = torch.optim.Adam(model.parameters(), lr=lr)
-    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr)
+    optimizer_G = None
+    optimizer_D = None
 
     # histoPath = os.path.join(dat_root, run_id)
     # os.makedirs(histoPath, exist_ok=True)
 
-    val_loss_min = 99.99
+    #===============VAE=================
+    PSNR_loss_min = 999.99
     best_epoch = -1
-    for epoch in range(1, epochs + 1):
-
+    global_epoch = 0
+    for epoch in range(1, pretrain_vae_epochs + 1):
+        global_epoch += 1
         timer_start = time.time()
 
-        if epoch <= pretrain_epochs:
-            current_lambda_gan = 0.0
-            tr_loss, tr_rec, tr_kl = train_epoch(
-                model, train_loader, optimizer, device, beta=beta
-            )
-            stats = {
-                "G_total": tr_loss,
-                "recon":   tr_rec,
-                "kl":      tr_kl,
-                "gan_G":   0.0,
-                "D_loss":  0.0,
-            }
-
-        else:
-            current_lambda_gan = lambda_gan
-            stats = train_epoch_withGan(
-                vae_model=model,
-                discriminator=discriminator,
-                optimizer_G=optimizer_G,
-                optimizer_D=optimizer_D,
-                loader=train_loader,
-                device=device,
-                beta=beta,
-                lambda_gan=current_lambda_gan,
-            )
-        vl_loss, vl_rec, vl_kl = eval_epoch(
-            model, test_loader, device, beta=beta
+        tr_loss, tr_rec, tr_kl = train_epoch(
+            model, train_loader, optimizer_vae, device, beta=beta
         )
-        if (val_loss_min>vl_loss):
-            val_loss_min = vl_loss
-            best_epoch = epoch
+        stats = {
+            "G_total": tr_loss,
+            "recon":   tr_rec,
+            "kl":      tr_kl,
+            "gan_G":   0.0,
+            "D_loss":  0.0,
+        }
+        vl_total, vl_rec, vl_kl, vl_gan = eval_epoch(
+            model, test_loader, device,
+            beta=beta,
+            discriminator=None,
+            lambda_gan=0.0
+        )
+
 
         # compute PSNR on validation set
         model.eval()
@@ -178,38 +168,131 @@ def main():
                 psnr_vals.append(compute_psnr(recon, clean))
 
         val_psnr = sum(psnr_vals) / len(psnr_vals)
+        if (PSNR_loss_min>val_psnr):
+            PSNR_loss_min = val_psnr
+            best_epoch = epoch
 
         print(
-            f"[Epoch {epoch:03d}] "
-            f"Train G_total={stats['G_total']:.6f} "
-            f"(recon={stats['recon']:.6f}, KL={stats['kl']:.6f}, GAN_G={stats['gan_G']:.6f}) | "
-            f"D_loss={stats['D_loss']:.6f} | "
-            f"Val loss={vl_loss:.6f} (recon={vl_rec:.6f}, KL={vl_kl:.6f})"
+            f"[Phase1-Epoch {global_epoch:03d}] "
+            f"Train VAE_total={stats['G_total']:.6f} "
+            f"(recon={stats['recon']:.6f}, KL={stats['kl']:.6f}) | "
+            f"Val total={vl_total:.6f} (recon={vl_rec:.6f}, KL={vl_kl:.6f})"
         )
-
-        if epoch % 2 == 0 or epoch == 1 or epoch == epochs:
-            save_recon_examples(
-                model, test_loader, device,
-                epoch, out_dir=results_root, n_show=8
-            )
-
-        
-
         timer_end = time.time()
         print("Time : ", timer_end-timer_start)
         print(f"  >> PSNR = {val_psnr:.3f} dB")
 
+        if global_epoch % 2 == 0 or global_epoch == 1 or global_epoch == pretrain_vae_epochs:
+            save_recon_examples(
+                model, test_loader, device,
+                global_epoch, out_dir=results_root, n_show=8
+            )
+
+    
+
         log_path = os.path.join(dat_root, f"{run_id}.dat")
 
         with open(log_path, "a") as f:
-                f.write(
-                    f"{epoch} "
-                    f"{stats['G_total']:.6f} "
-                    f"{stats['D_loss']:.6f} "
-                    f"{stats['gan_G']:.6f} "
-                    f"{stats['recon']:.6f} "
-                    f"{vl_loss:.6f} \n"
-                )
+            f.write(
+                f"{epoch} "
+                f"{stats['G_total']:.6f} "
+                f"{stats['D_loss']:.6f} "
+                f"{stats['gan_G']:.6f} "
+                f"{stats['recon']:.6f} "   # train recon MSE
+                f"{vl_total:.6f} "         # val total (VAE+GAN)
+                f"{vl_rec:.6f} \n"         # val recon MSE
+            )
+
+        
+    #===============Training GAN=================
+    pretrain_discriminator(vae_model=model,discriminator=discriminator,loader=train_loader,
+                            device=device,steps=d_warmup_steps,lr=1e-4)
+    
+
+    #===============vae + GAN : fine-tune=================
+
+    # desactivate encoder
+    for p in model.enc1.parameters():
+        p.requires_grad = False
+    for p in model.enc2.parameters():
+        p.requires_grad = False
+    for p in model.enc3.parameters():
+        p.requires_grad = False
+    for p in model.fc_mu.parameters():
+        p.requires_grad = False
+    for p in model.fc_logvar.parameters():
+        p.requires_grad = False
+    
+    #create new opt_G/opt_D for fine-tune
+    optimizer_G = torch.optim.Adam(
+        filter(lambda p: p.requires_grad,model.parameters()),lr = lr
+    ) 
+    optimizer_D = torch.optim.Adam(discriminator.parameters(),lr = lr)
+
+    for epoch in range(1,gan_finetune_epochs+1):
+        global_epoch +=1
+        timer_start = time.time()
+        stats = train_epoch_withGan(
+            vae_model=model,
+            discriminator=discriminator,
+            optimizer_G=optimizer_G,
+            optimizer_D=optimizer_D,
+            loader=train_loader,
+            device=device,
+            beta=beta,
+            lambda_gan=lambda_gan,
+        )
+    
+        vl_total, vl_rec, vl_kl, vl_gan = eval_epoch(
+            model, test_loader, device,
+            beta=beta,
+            discriminator=discriminator,
+            lambda_gan=lambda_gan,
+        )
+
+        
+        model.eval()
+        psnr_vals = []
+        with torch.no_grad():
+            for noisy, clean in test_loader:
+                noisy = noisy.to(device)
+                clean = clean.to(device)
+                recon, _, _ = model(noisy)
+                psnr_vals.append(compute_psnr(recon, clean))
+        val_psnr = sum(psnr_vals) / len(psnr_vals)
+        if PSNR_loss_min > val_psnr:
+            PSNR_loss_min = val_psnr
+            best_epoch = global_epoch
+
+        print(
+            f"[Phase3-Epoch {global_epoch:03d}] "
+            f"Train G_total={stats['G_total']:.6f} "
+            f"(recon={stats['recon']:.6f}, KL={stats['kl']:.6f}, GAN_G={stats['gan_G']:.6f}) | "
+            f"D_loss={stats['D_loss']:.6f} | "
+            f"Val total={vl_total:.6f} (recon={vl_rec:.6f}, KL={vl_kl:.6f}, GAN={vl_gan:.6f})"
+        )
+
+        timer_end = time.time()
+        print("Time : ", timer_end - timer_start)
+        print(f"  >> PSNR = {val_psnr:.3f} dB")
+
+        if global_epoch % 2 == 0 or epoch == gan_finetune_epochs:
+            save_recon_examples(
+                model, test_loader, device,
+                global_epoch, out_dir=results_root, n_show=8
+            )
+
+        log_path = os.path.join(dat_root, f"{run_id}.dat")
+        with open(log_path, "a") as f:
+            f.write(
+                f"{global_epoch} "
+                f"{stats['G_total']:.6f} "
+                f"{stats['D_loss']:.6f} "
+                f"{stats['gan_G']:.6f} "
+                f"{stats['recon']:.6f} "
+                f"{vl_total:.6f} "
+                f"{vl_rec:.6f} \n"
+            )
 
 
 

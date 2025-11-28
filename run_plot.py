@@ -11,8 +11,9 @@ epoch      = data[:, 0]
 G_total    = data[:, 1]
 D_loss     = data[:, 2]
 GAN_G      = data[:, 3]
-recon      = data[:, 4]
-val_loss   = data[:, 5]
+train_recon  = data[:, 4]
+val_total    = data[:, 5]
+val_recon    = data[:, 6]
 
 
 
@@ -63,11 +64,11 @@ plt.savefig("./curve/"+file_time+"/loss_curves.png")
 # plt.savefig("./curve/"+file_time+"/loss_curves.png")
 
 plt.figure()
-plt.plot(epoch, recon,    label="Train recon MSE")
-plt.plot(epoch, val_loss, label="Val total loss")
+plt.plot(epoch, train_recon, label="Train recon MSE")
+plt.plot(epoch, val_recon,   label="Val recon MSE")
 plt.xlabel("Epochs")
-plt.ylabel("Loss")
+plt.ylabel("MSE loss")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
-plt.savefig("./curve/"+file_time+"/loss_recon_val.png")
+plt.savefig("./curve/"+file_time+"/loss_recon_only.png")
