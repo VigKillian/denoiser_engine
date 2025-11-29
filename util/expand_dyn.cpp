@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include "image_ppm.h"
 #include <iostream>
+#include <algorithm>
+#include <random>
 
 void rechercheMinMax(OCTET* ImgIn, int n, int& xminR, int& xminG, int& xminB, int& xmaxR, int& xmaxG, int& xmaxB){
     for(int i = 0; i<n; i++){
@@ -39,26 +41,39 @@ int main(int argc, char* argv[])
     lire_image_ppm(cNomImgLue, ImgIn, nH * nW);
     allocation_tableau(ImgOut, OCTET, nTaille3);
 
-    // for(int i = 0; i<nTaille3; i++){
-    //     ImgOut[i] = (float)ImgIn[i] / 50.0;
-    // }
+    for(int i = 0; i<nTaille3; i++){
+        ImgOut[i] = (float)ImgIn[i] / 30.0;
+    }
 
     int xminR = 255; int xminG = 255; int xminB = 255; int xmaxR = 0; int xmaxG = 0; int xmaxB = 0;
 
-    rechercheMinMax(ImgIn, nTaille, xminR, xminG, xminB, xmaxR, xmaxG, xmaxB);
+    rechercheMinMax(ImgOut, nTaille, xminR, xminG, xminB, xmaxR, xmaxG, xmaxB);
 
-    std::cout<<"Min R : "<< xminR << ", min G : " << xminG << ", min B : "<<xminB<<", max R : "<<xmaxR<<", max G : "<<xmaxG<<", max B : "<<xmaxB<<std::endl;
+    // std::cout<<"Min R : "<< xminR << ", min G : " << xminG << ", min B : "<<xminB<<", max R : "<<xmaxR<<", max G : "<<xmaxG<<", max B : "<<xmaxB<<std::endl;
 
     double alphaR = -255*(double)xminR/(double)(xmaxR-xminR); double alphaG = -255*(double)xminG/(double)(xmaxG-xminG); double alphaB = -255*(double)xminB/(double)(xmaxB-xminB);
     double betaR = 255/(double)(xmaxR-xminR); double betaG = 255/(double)(xmaxG-xminG); double betaB = 255/(double)(xmaxB-xminB);
 
-    std::cout<<"Alpha R: "<<alphaR<<", alpha G : "<<alphaG<<", alpha B : "<<alphaB<<", beta R : "<<betaR<<", beta G : "<<betaG<<", beta B : "<<betaB<<std::endl;
+    // std::cout<<"Alpha R: "<<alphaR<<", alpha G : "<<alphaG<<", alpha B : "<<alphaB<<", beta R : "<<betaR<<", beta G : "<<betaG<<", beta B : "<<betaB<<std::endl;
+
+    double amplitude = 1.0;                  // A : force du bruit (0..255)
+	std::mt19937 rng(12345);                  // graine (fixe pour reproductible)
+	std::uniform_real_distribution<double> uni(-amplitude, amplitude);
+
+    for(int i = 0; i<nTaille3; i++){
+        double bruit = uni(rng);              // U(-A, A)
+		int v = (int)lround((double)ImgOut[i] + bruit);
+		v = std::clamp(v, 0, 255);
+		ImgOut[i] = (OCTET)v;
+    }
 
     for(int i = 0; i<nTaille; i++){
-        ImgOut[3*i] = (OCTET) alphaR + betaR*ImgIn[3*i];
-        ImgOut[3*i+1] = (OCTET) alphaG + betaG*ImgIn[3*i+1];
-        ImgOut[3*i+2] = (OCTET) alphaB + betaB*ImgIn[3*i+2];
+        ImgOut[3*i] = (OCTET) alphaR + betaR*ImgOut[3*i];
+        ImgOut[3*i+1] = (OCTET) alphaG + betaG*ImgOut[3*i+1];
+        ImgOut[3*i+2] = (OCTET) alphaB + betaB*ImgOut[3*i+2];
     }
+    
+
     
     ecrire_image_ppm(cNomImgEcrite, ImgOut,  nH, nW);
     free(ImgIn);

@@ -76,8 +76,8 @@ def main():
     nb_channels_base = 32   # if 32 : 3->32->32*2->32*4 --> 32*2->32->3
     latent_dim = 256
     batch_size = 12
-    pretrain_vae_epochs = 60 
-    gan_finetune_epochs = 0
+    pretrain_vae_epochs = 40 
+    gan_finetune_epochs = 40
     d_warmup_steps      = 500
     lr         = 1e-3
     beta       = 1e-5          # KL
