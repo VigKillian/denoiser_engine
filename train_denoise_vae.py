@@ -12,8 +12,7 @@ from denoise_vae_model import (
     ConvDenoiseVAE,
     train_epoch,
     eval_epoch,
-    train_epoch_withGan,
-    pretrain_discriminator,
+    train_epoch_withGan,    
 )
 
 
@@ -76,14 +75,14 @@ def main():
     nb_channels_base = 32   # if 32 : 3->32->32*2->32*4 --> 32*2->32->3
     latent_dim = 256
     batch_size = 12
-    pretrain_vae_epochs = 40 
-    gan_finetune_epochs = 40
-    d_warmup_steps      = 500
+    pretrain_vae_epochs = 0 
+    gan_epochs          = 60 
+    num_critic          = 1 
+
     lr         = 1e-3
-    beta       = 1e-5          # KL
-    lambda_gan = 1e-4          # lambda for GAN
-    # lambda_gan = 0          # lambda for GAN
-    pretrain_epochs = 0 
+    beta       = 1e-5            # KL
+    lambda_gan = 1e-4            # GAN loss
+
     # =================================
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -97,6 +96,7 @@ def main():
 
     os.makedirs(results_root, exist_ok=True)
     os.makedirs(ckpt_root, exist_ok=True)
+    os.makedirs(dat_root,     exist_ok=True)
 
     print(f"[Run] results will be saved to: {results_root}")
     print(f"[Run] checkpoints will be saved to: {ckpt_root}")
@@ -119,21 +119,20 @@ def main():
     model = ConvDenoiseVAE(
         img_channels=3, img_size=img_size, latent_dim=latent_dim, nb_channels_base = nb_channels_base
     ).to(device)
-    optimizer_vae = torch.optim.Adam(model.parameters(), lr=lr)
 
     discriminator = ConvoGan(
-        img_channels=3, img_size=img_size, nb_channels_base=nb_channels_base
+        img_channels=6,
+        img_size=img_size,
+        nb_channels_base=nb_channels_base
     ).to(device)
-    optimizer_G = None
-    optimizer_D = None
 
-    # histoPath = os.path.join(dat_root, run_id)
-    # os.makedirs(histoPath, exist_ok=True)
 
     #===============VAE=================
-    PSNR_loss_min = 999.99
+    optimizer_vae = torch.optim.Adam(model.parameters(), lr=lr)
+    PSNR_max = -999.99
     best_epoch = -1
     global_epoch = 0
+    best_state = None
     for epoch in range(1, pretrain_vae_epochs + 1):
         global_epoch += 1
         timer_start = time.time()
@@ -168,9 +167,11 @@ def main():
                 psnr_vals.append(compute_psnr(recon, clean))
 
         val_psnr = sum(psnr_vals) / len(psnr_vals)
-        if (PSNR_loss_min>val_psnr):
-            PSNR_loss_min = val_psnr
+        if (PSNR_max<val_psnr):
+            PSNR_max = val_psnr
             best_epoch = epoch
+            best_state = model.state_dict()
+
 
         print(
             f"[Phase1-Epoch {global_epoch:03d}] "
@@ -203,35 +204,13 @@ def main():
                 f"{vl_rec:.6f} \n"         # val recon MSE
             )
 
-        
-    #===============Training GAN=================
-    pretrain_discriminator(vae_model=model,discriminator=discriminator,loader=train_loader,
-                            device=device,steps=d_warmup_steps,lr=1e-4)
-    
+    optimizer_G = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr)
 
-    #===============vae + GAN : fine-tune=================
-
-    # desactivate encoder
-    for p in model.enc1.parameters():
-        p.requires_grad = False
-    for p in model.enc2.parameters():
-        p.requires_grad = False
-    for p in model.enc3.parameters():
-        p.requires_grad = False
-    for p in model.fc_mu.parameters():
-        p.requires_grad = False
-    for p in model.fc_logvar.parameters():
-        p.requires_grad = False
-    
-    #create new opt_G/opt_D for fine-tune
-    optimizer_G = torch.optim.Adam(
-        filter(lambda p: p.requires_grad,model.parameters()),lr = lr
-    ) 
-    optimizer_D = torch.optim.Adam(discriminator.parameters(),lr = lr)
-
-    for epoch in range(1,gan_finetune_epochs+1):
-        global_epoch +=1
+    for epoch in range(1, gan_epochs + 1):
+        global_epoch += 1
         timer_start = time.time()
+
         stats = train_epoch_withGan(
             vae_model=model,
             discriminator=discriminator,
@@ -241,8 +220,10 @@ def main():
             device=device,
             beta=beta,
             lambda_gan=lambda_gan,
+            k_G=1,
+            k_D=num_critic, 
         )
-    
+
         vl_total, vl_rec, vl_kl, vl_gan = eval_epoch(
             model, test_loader, device,
             beta=beta,
@@ -250,7 +231,6 @@ def main():
             lambda_gan=lambda_gan,
         )
 
-        
         model.eval()
         psnr_vals = []
         with torch.no_grad():
@@ -260,23 +240,24 @@ def main():
                 recon, _, _ = model(noisy)
                 psnr_vals.append(compute_psnr(recon, clean))
         val_psnr = sum(psnr_vals) / len(psnr_vals)
-        if PSNR_loss_min > val_psnr:
-            PSNR_loss_min = val_psnr
+
+        if val_psnr > PSNR_max:
+            PSNR_max   = val_psnr
             best_epoch = global_epoch
+            best_state = model.state_dict()
 
         print(
-            f"[Phase3-Epoch {global_epoch:03d}] "
+            f"[Phase2-Epoch {global_epoch:03d}] "
             f"Train G_total={stats['G_total']:.6f} "
             f"(recon={stats['recon']:.6f}, KL={stats['kl']:.6f}, GAN_G={stats['gan_G']:.6f}) | "
             f"D_loss={stats['D_loss']:.6f} | "
             f"Val total={vl_total:.6f} (recon={vl_rec:.6f}, KL={vl_kl:.6f}, GAN={vl_gan:.6f})"
         )
-
         timer_end = time.time()
         print("Time : ", timer_end - timer_start)
         print(f"  >> PSNR = {val_psnr:.3f} dB")
 
-        if global_epoch % 2 == 0 or epoch == gan_finetune_epochs:
+        if global_epoch % 2 == 0 or epoch == gan_epochs:
             save_recon_examples(
                 model, test_loader, device,
                 global_epoch, out_dir=results_root, n_show=8
@@ -294,12 +275,12 @@ def main():
                 f"{vl_rec:.6f} \n"
             )
 
+    if best_state is not None:
+        model.load_state_dict(best_state)
 
-
-    print("Training finished. Best epoch is : ",best_epoch) 
-    
+    print("Training finished. Best epoch is : ", best_epoch)
     ckpt_path = os.path.join(
-        ckpt_root, f"denoise_vae_epoch{best_epoch:3d}.pth"
+        ckpt_root, f"denoise_vae_epoch_{best_epoch:03d}.pth"
     )
     torch.save(model.state_dict(), ckpt_path)
     print("Saved the checkpoint of best epoch:", ckpt_path)
