@@ -17,7 +17,7 @@ class DenoisePairDataset(Dataset):
         self.img_size = img_size
 
         clean_dir = os.path.join(root_dir, split, "imgs")
-        noisy_dir = os.path.join(root_dir, split, "noisy_fort")
+        noisy_dir = os.path.join(root_dir, split, "noisy3_fort")
 
         noisy_paths = []
         for ext in ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tif", "*.tiff","*.ppm"]:
@@ -194,6 +194,7 @@ class ConvDenoiseVAE(nn.Module):
         recon = self.decode(z, skips)
         return recon, mu, logvar
 
+
 # =====================
 # GAN
 # =====================
@@ -201,15 +202,13 @@ class ConvDenoiseVAE(nn.Module):
 adversarial_loss = torch.nn.BCELoss()
 
 class ConvoGan(nn.Module):
-    def __init__(self, img_channels=3, img_size=64, nb_channels_base=32):
+    def __init__(self, img_channels=6, img_size=64, nb_channels_base=32):
+
         super().__init__()
         self.img_channels = img_channels
         self.img_size = img_size
         self.nb_channels_base = nb_channels_base
 
-        # -------------------------
-        # Encoder: downsampling + store skip features
-        # -------------------------
         self.features = nn.Sequential(
             nn.Conv2d(img_channels, nb_channels_base, kernel_size=4, stride=2, padding=1),  # 128 -> 64
             nn.LeakyReLU(0.2, inplace=True),
@@ -225,7 +224,7 @@ class ConvoGan(nn.Module):
 
         self.enc_feat_h = img_size // 8
         self.enc_feat_w = img_size // 8
-        enc_flat_dim = nb_channels_base* 4 * self.enc_feat_h * self.enc_feat_w
+        enc_flat_dim = nb_channels_base * 4 * self.enc_feat_h * self.enc_feat_w
 
         self.classifier = nn.Sequential(
             nn.Flatten(),
@@ -233,8 +232,11 @@ class ConvoGan(nn.Module):
             nn.Sigmoid(),
         )
 
-    def forward(self, x):
-        feat = self.features(x)
+    def forward(self, pair):
+        """
+        pair: [B, 6, H, W] = concat(noisy, target) on channel dim
+        """
+        feat = self.features(pair)
         validity = self.classifier(feat)  # [B,1]
         return validity
 
@@ -244,7 +246,6 @@ class ConvoGan(nn.Module):
 # =====================
 
 def vae_loss(recon, target, mu, logvar, beta=1e-4):
-
     recon_loss = nn.functional.mse_loss(recon, target, reduction='mean')
     kl = -0.5 * torch.mean(torch.sum(
         1 + logvar - mu.pow(2) - logvar.exp(), dim=1
@@ -253,6 +254,7 @@ def vae_loss(recon, target, mu, logvar, beta=1e-4):
 
 
 def train_epoch(model, loader, optimizer, device, beta=1e-4):
+
     model.train()
     total_loss = total_recon = total_kl = 0.0
 
@@ -267,20 +269,33 @@ def train_epoch(model, loader, optimizer, device, beta=1e-4):
         optimizer.step()
 
         bs = noisy.size(0)
-        total_loss  += loss.item()        * bs
-        total_recon += recon_loss.item()  * bs
-        total_kl    += kl_loss.item()     * bs
+        total_loss  += loss.item()       * bs
+        total_recon += recon_loss.item() * bs
+        total_kl    += kl_loss.item()    * bs
 
     n = len(loader.dataset)
     return total_loss / n, total_recon / n, total_kl / n
 
 
-def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loader,device, beta=1e-4,lambda_gan=1e-3, k_G=2, k_D=1):
+def train_epoch_withGan(
+    vae_model,
+    discriminator,
+    optimizer_G,
+    optimizer_D,
+    loader,
+    device,
+    beta=1e-4,
+    lambda_gan=1e-4,
+    k_G=1,
+    k_D=5, 
+):
+
     vae_model.train()
     discriminator.train()
+
     total_G = total_recon = total_kl = total_gan_G = 0.0
     total_D = 0.0
-    step = 0
+    N = len(loader.dataset)
     D_count = 0
 
     for noisy, clean in loader:
@@ -288,23 +303,26 @@ def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loade
         clean = clean.to(device)
         bs = noisy.size(0)
 
-        # ========start training GAN========
-        if step % (k_G + k_D) < k_D:
+
+        for _ in range(k_D):
             optimizer_D.zero_grad()
+
+            with torch.no_grad():
+                recon, _, _ = vae_model(noisy)
+
+            real_pair = torch.cat([noisy, clean], dim=1)   # [B, 6, H, W]
+            fake_pair = torch.cat([noisy, recon], dim=1)   # [B, 6, H, W]
 
             valid = torch.ones(bs, 1, device=device)
             fake  = torch.zeros(bs, 1, device=device)
 
-            # Real
-            pred_real = discriminator(clean)
+            pred_real = discriminator(real_pair)
+            pred_fake = discriminator(fake_pair)
+
             loss_D_real = adversarial_loss(pred_real, valid)
-
-            with torch.no_grad():
-                recon_fake, _, _ = vae_model(noisy)
-            pred_fake = discriminator(recon_fake.detach())
             loss_D_fake = adversarial_loss(pred_fake, fake)
-
             loss_D = 0.5 * (loss_D_real + loss_D_fake)
+
             loss_D.backward()
             optimizer_D.step()
 
@@ -312,8 +330,7 @@ def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loade
             D_count += bs
 
 
-        # ========fin training GAN========
-        else:
+        for _ in range(k_G):
             optimizer_G.zero_grad()
 
             recon, mu, logvar = vae_model(noisy)
@@ -321,8 +338,9 @@ def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loade
                 recon, clean, mu, logvar, beta=beta
             )
 
+            fake_pair_for_G = torch.cat([noisy, recon], dim=1)
             valid = torch.ones(bs, 1, device=device)
-            pred_fake_for_G = discriminator(recon)
+            pred_fake_for_G = discriminator(fake_pair_for_G)
             gan_loss_G = adversarial_loss(pred_fake_for_G, valid)
 
             loss_total = vae_total + lambda_gan * gan_loss_G
@@ -334,58 +352,18 @@ def train_epoch_withGan(vae_model,discriminator,  optimizer_G,optimizer_D, loade
             total_kl    += kl_loss.item()     * bs
             total_gan_G += gan_loss_G.item()  * bs
 
-        step += 1
-
-    n = len(loader.dataset)
     if D_count > 0:
         D_epoch = total_D / D_count
     else:
         D_epoch = 0.0
 
     return {
-        "G_total": total_G / n,
-        "recon":   total_recon / n,
-        "kl":      total_kl / n,
-        "gan_G":   total_gan_G / n,
+        "G_total": total_G / N,
+        "recon":   total_recon / N,
+        "kl":      total_kl / N,
+        "gan_G":   total_gan_G / N,
         "D_loss":  D_epoch,
     }
-
-def pretrain_discriminator(vae_model, discriminator, loader, device, steps=500, lr=1e-4):
-
-    vae_model.eval()
-    discriminator.train()
-
-    optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=lr)
-
-    step = 0
-    while step < steps:
-        for noisy, clean in loader:
-            noisy = noisy.to(device)
-            clean = clean.to(device)
-            bs = noisy.size(0)
-
-            with torch.no_grad():
-                recon, _, _ = vae_model(noisy)
-
-            real_labels = torch.ones(bs, 1, device=device) * 0.9
-            fake_labels = torch.zeros(bs, 1, device=device) + 0.1
-
-            pred_real = discriminator(clean)
-            pred_fake = discriminator(recon)
-
-            loss_real = adversarial_loss(pred_real, real_labels)
-            loss_fake = adversarial_loss(pred_fake, fake_labels)
-            loss_D = 0.5 * (loss_real + loss_fake)
-
-            optimizer_D.zero_grad()
-            loss_D.backward()
-            optimizer_D.step()
-
-            step += 1
-            if step >= steps:
-                break
-
-    print(f"[Pretrain D] Finished {steps} steps of discriminator warmup.")
 
 
 @torch.no_grad()
@@ -397,12 +375,14 @@ def eval_epoch(
     discriminator=None,
     lambda_gan=0.0
 ):
+
     vae_model.eval()
     if discriminator is not None:
         discriminator.eval()
 
     total_loss = total_recon = total_kl = 0.0
     total_adv  = 0.0
+    N = len(loader.dataset)
 
     for noisy, clean in loader:
         noisy = noisy.to(device)
@@ -414,9 +394,9 @@ def eval_epoch(
         )
 
         if discriminator is not None and lambda_gan > 0.0:
-            bs = noisy.size(0)
-            valid = torch.ones(bs, 1, device=device)
-            pred_fake = discriminator(recon)
+            fake_pair = torch.cat([noisy, recon], dim=1)
+            valid = torch.ones(noisy.size(0), 1, device=device)
+            pred_fake = discriminator(fake_pair)
             gan_loss_G = adversarial_loss(pred_fake, valid)
         else:
             gan_loss_G = torch.tensor(0.0, device=device)
@@ -429,10 +409,9 @@ def eval_epoch(
         total_kl    += kl_loss.item()    * bs
         total_adv   += gan_loss_G.item() * bs
 
-    n = len(loader.dataset)
     return (
-        total_loss / n,
-        total_recon / n,
-        total_kl / n,
-        total_adv / n,
+        total_loss / N,
+        total_recon / N,
+        total_kl / N,
+        total_adv / N,
     )
