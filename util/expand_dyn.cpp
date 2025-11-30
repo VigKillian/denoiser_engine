@@ -56,7 +56,7 @@ int main(int argc, char* argv[])
 
     // std::cout<<"Alpha R: "<<alphaR<<", alpha G : "<<alphaG<<", alpha B : "<<alphaB<<", beta R : "<<betaR<<", beta G : "<<betaG<<", beta B : "<<betaB<<std::endl;
 
-    double amplitude = 1.0;                  // A : force du bruit (0..255)
+    double amplitude = 2.0;                  // A : force du bruit (0..255)
 	std::mt19937 rng(12345);                  // graine (fixe pour reproductible)
 	std::uniform_real_distribution<double> uni(-amplitude, amplitude);
 
