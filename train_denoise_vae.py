@@ -76,12 +76,13 @@ def main():
     latent_dim = 256
     batch_size = 12
     pretrain_vae_epochs = 0 
-    gan_epochs          = 60 
-    num_critic          = 1 
+    gan_epochs          = 80 
+    k_G = 1
+    k_D = 2 
 
     lr         = 1e-3
     beta       = 1e-5            # KL
-    lambda_gan = 1e-4            # GAN loss
+    lambda_gan = 5e-5            # GAN loss
 
     # =================================
 
@@ -220,8 +221,8 @@ def main():
             device=device,
             beta=beta,
             lambda_gan=lambda_gan,
-            k_G=1,
-            k_D=num_critic, 
+            k_G=k_G,
+            k_D=k_D, 
         )
 
         vl_total, vl_rec, vl_kl, vl_gan = eval_epoch(
