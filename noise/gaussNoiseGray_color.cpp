@@ -80,11 +80,11 @@ int main(int argc, char* argv[])
 
 
 
-	double sigma_bruit = 40.0;
+	double sigma_bruit = 60.0;
 
 	std::string nom = cNomImgLue;
 	unsigned int seed = extraireSeedDepuisNom(nom);
-	std::mt19937 rng(seed);
+	std::mt19937 rng(12345 + seed);
 	std::normal_distribution<double> gauss(0.0, sigma_bruit);
 
 	for (int i = 0; i < nTaille3; ++i) {
