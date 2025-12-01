@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <iostream>
 #include <random>
+#include <string>
+#include <cctype>
 /*
 for f in input_images/*.pgm; do
   [ -e "$f" ] || continue 
@@ -13,6 +15,21 @@ for f in input_images/*.pgm; do
   ./gaussNoiseGray "$f" "output_images/${base}_noise.pgm"
 done
 */
+
+unsigned int extraireSeedDepuisNom(const std::string& nomFichier)
+{
+    std::string digits;
+    for (char c : nomFichier)
+    {
+        if (std::isdigit(c))
+            digits.push_back(c);
+    }
+
+    if (digits.empty())
+        return 0; // Seed par défaut si aucun chiffre trouvé
+
+    return std::stoul(digits);  // convertit la suite de chiffres en entier
+}
 
 int main(int argc, char* argv[])
 {
@@ -63,9 +80,11 @@ int main(int argc, char* argv[])
 
 
 
-	double sigma_bruit = 60.0;
+	double sigma_bruit = 40.0;
 
-	std::mt19937 rng(12345);
+	std::string nom = cNomImgLue;
+	unsigned int seed = extraireSeedDepuisNom(nom);
+	std::mt19937 rng(seed);
 	std::normal_distribution<double> gauss(0.0, sigma_bruit);
 
 	for (int i = 0; i < nTaille3; ++i) {
