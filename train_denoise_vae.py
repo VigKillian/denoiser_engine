@@ -78,11 +78,12 @@ def main():
     pretrain_vae_epochs = 0 
     gan_epochs          = 80 
     k_G = 1
-    k_D = 2 
+    k_D = 5 
 
     lr         = 1e-3
     beta       = 1e-5            # KL
-    lambda_gan = 5e-5            # GAN loss
+    lambda_gan = 1e-4            # GAN loss
+    lambda_feat = 1e-3
 
     # =================================
 
@@ -221,6 +222,7 @@ def main():
             device=device,
             beta=beta,
             lambda_gan=lambda_gan,
+            lambda_feat=lambda_feat,
             k_G=k_G,
             k_D=k_D, 
         )

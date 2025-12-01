@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 from torchvision import transforms
+import torch.nn.functional as F
 
 class DenoisePairDataset(Dataset):
 
@@ -203,21 +204,20 @@ adversarial_loss = torch.nn.BCELoss()
 
 class ConvoGan(nn.Module):
     def __init__(self, img_channels=6, img_size=64, nb_channels_base=32):
-
         super().__init__()
         self.img_channels = img_channels
         self.img_size = img_size
         self.nb_channels_base = nb_channels_base
 
         self.features = nn.Sequential(
-            nn.Conv2d(img_channels, nb_channels_base, kernel_size=4, stride=2, padding=1),  # 128 -> 64
+            nn.Conv2d(img_channels, nb_channels_base, kernel_size=4, stride=2, padding=1),
             nn.LeakyReLU(0.2, inplace=True),
 
-            nn.Conv2d(nb_channels_base, nb_channels_base * 2, kernel_size=4, stride=2, padding=1),  # 64 -> 32
+            nn.Conv2d(nb_channels_base, nb_channels_base * 2, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(nb_channels_base * 2),
             nn.LeakyReLU(0.2, inplace=True),
 
-            nn.Conv2d(nb_channels_base * 2, nb_channels_base * 4, kernel_size=4, stride=2, padding=1),  # 32 -> 16
+            nn.Conv2d(nb_channels_base * 2, nb_channels_base * 4, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(nb_channels_base * 4),
             nn.LeakyReLU(0.2, inplace=True),
         )
@@ -232,12 +232,11 @@ class ConvoGan(nn.Module):
             nn.Sigmoid(),
         )
 
-    def forward(self, pair):
-        """
-        pair: [B, 6, H, W] = concat(noisy, target) on channel dim
-        """
-        feat = self.features(pair)
-        validity = self.classifier(feat)  # [B,1]
+    def forward(self, pair, return_feat: bool = False):
+        feat = self.features(pair)          # [B, C, H', W']
+        validity = self.classifier(feat)    # [B, 1]
+        if return_feat:
+            return validity, feat
         return validity
 
 
@@ -285,9 +284,10 @@ def train_epoch_withGan(
     loader,
     device,
     beta=1e-4,
-    lambda_gan=1e-4,
+    lambda_gan=5e-5,
+    lambda_feat=1e-3,
     k_G=1,
-    k_D=5, 
+    k_D=4, 
 ):
 
     vae_model.train()
@@ -338,12 +338,28 @@ def train_epoch_withGan(
                 recon, clean, mu, logvar, beta=beta
             )
 
+            # ---- GAN + Feature matching ----
             fake_pair_for_G = torch.cat([noisy, recon], dim=1)
+            real_pair_for_G = torch.cat([noisy, clean], dim=1)
+
             valid = torch.ones(bs, 1, device=device)
-            pred_fake_for_G = discriminator(fake_pair_for_G)
+
+            pred_fake_for_G, feat_fake = discriminator(
+                fake_pair_for_G, return_feat=True
+            )
+            _, feat_real = discriminator(
+                real_pair_for_G, return_feat=True
+            )
+            feat_real = feat_real.detach()
+
             gan_loss_G = adversarial_loss(pred_fake_for_G, valid)
 
-            loss_total = vae_total + lambda_gan * gan_loss_G
+            feat_loss = F.l1_loss(feat_fake, feat_real)
+
+            loss_total = vae_total \
+                         + lambda_gan * gan_loss_G \
+                         + lambda_feat * feat_loss
+
             loss_total.backward()
             optimizer_G.step()
 
