@@ -8,6 +8,23 @@
 #include <algorithm>
 #include <iostream>
 #include <random>
+#include <string>
+#include <cctype>
+
+unsigned int extraireSeedDepuisNom(const std::string& nomFichier)
+{
+    std::string digits;
+    for (char c : nomFichier)
+    {
+        if (std::isdigit(c))
+            digits.push_back(c);
+    }
+
+    if (digits.empty())
+        return 0; // Seed par défaut si aucun chiffre trouvé
+
+    return std::stoul(digits);  // convertit la suite de chiffres en entier
+}
 
 int main(int argc, char* argv[])
 {
@@ -35,8 +52,10 @@ int main(int argc, char* argv[])
 	lire_image_ppm(cNomImgLue, ImgIn, nH * nW);
 	allocation_tableau(ImgOut, OCTET, nTaille3);
 		
-	double p = 0.2;                          // 5% des pixels bruités
-	std::mt19937 rng(12345);
+	double p = 0.05;                          // 5% des pixels bruités
+	std::string nom = cNomImgLue;
+	unsigned int seed = extraireSeedDepuisNom(nom);
+	std::mt19937 rng(seed);
 	std::uniform_real_distribution<double> u01(0.0, 1.0);
 
 	for (int i = 0; i < nTaille3; i+=3) {

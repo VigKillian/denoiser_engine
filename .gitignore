@@ -7,6 +7,7 @@ dataset_color
 train
 checkpoints
 histos
+/dataset
 
 ttt.txt
 \results

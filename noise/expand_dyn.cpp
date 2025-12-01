@@ -4,6 +4,8 @@
 #include <iostream>
 #include <algorithm>
 #include <random>
+#include <string>
+#include <cctype>
 
 void rechercheMinMax(OCTET* ImgIn, int n, int& xminR, int& xminG, int& xminB, int& xmaxR, int& xmaxG, int& xmaxB){
     for(int i = 0; i<n; i++){
@@ -16,6 +18,20 @@ void rechercheMinMax(OCTET* ImgIn, int n, int& xminR, int& xminG, int& xminB, in
     }
 }
 
+unsigned int extraireSeedDepuisNom(const std::string& nomFichier)
+{
+    std::string digits;
+    for (char c : nomFichier)
+    {
+        if (std::isdigit(c))
+            digits.push_back(c);
+    }
+
+    if (digits.empty())
+        return 0; // Seed par défaut si aucun chiffre trouvé
+
+    return std::stoul(digits);  // convertit la suite de chiffres en entier
+}
 
 int main(int argc, char* argv[])
 {
@@ -57,7 +73,9 @@ int main(int argc, char* argv[])
     // std::cout<<"Alpha R: "<<alphaR<<", alpha G : "<<alphaG<<", alpha B : "<<alphaB<<", beta R : "<<betaR<<", beta G : "<<betaG<<", beta B : "<<betaB<<std::endl;
 
     double amplitude = 2.0;                  // A : force du bruit (0..255)
-	std::mt19937 rng(12345);                  // graine (fixe pour reproductible)
+	std::string nom = cNomImgLue;
+	unsigned int seed = extraireSeedDepuisNom(nom);
+	std::mt19937 rng(seed);                 // graine (fixe pour reproductible)
 	std::uniform_real_distribution<double> uni(-amplitude, amplitude);
 
     for(int i = 0; i<nTaille3; i++){
