@@ -17,7 +17,7 @@ class DenoisePairDataset(Dataset):
         self.img_size = img_size
 
         clean_dir = os.path.join(root_dir, split, "imgs")
-        noisy_dir = os.path.join(root_dir, split, "noisy2_fort")
+        noisy_dir = os.path.join(root_dir, split, "noisy")
 
         noisy_paths = []
         for ext in ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tif", "*.tiff","*.ppm"]:
@@ -32,8 +32,8 @@ class DenoisePairDataset(Dataset):
             
             name = os.path.basename(n_path)
             c_name = name.replace("_noise", "")
-            c_path = os.path.join(clean_dir, c_name)
-
+            t_name = "00" + c_name[2:]
+            c_path = os.path.join(clean_dir, t_name)
             if not os.path.exists(c_path):
                 print(f"[WARN] clean image not found for {name}, skip.")
                 continue
