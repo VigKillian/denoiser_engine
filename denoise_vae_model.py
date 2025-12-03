@@ -18,7 +18,7 @@ class DenoisePairDataset(Dataset):
         self.img_size = img_size
 
         clean_dir = os.path.join(root_dir, split, "imgs")
-        noisy_dir = os.path.join(root_dir, split, "noisy_gauss_fort")
+        noisy_dir = os.path.join(root_dir, split, "noisy_rand")
 
         noisy_paths = []
         for ext in ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tif", "*.tiff","*.ppm"]:
@@ -141,7 +141,8 @@ class ConvDenoiseVAE(nn.Module):
         # Final 3-channel output layer
         self.dec3 = nn.Sequential(
             nn.Conv2d(nb_channels_base, img_channels, kernel_size=3, stride=1, padding=1),
-            nn.Sigmoid(),  # Output range [0,1]
+            # nn.Sigmoid(),  # Output range [0,1]
+            nn.Tanh(),
         )
 
     # -------------------------
@@ -192,8 +193,9 @@ class ConvDenoiseVAE(nn.Module):
     def forward(self, x):
         mu, logvar, skips = self.encode(x)
         z = self.reparameterize(mu, logvar)
-        recon = self.decode(z, skips)
-        return recon, mu, logvar
+        noise_hat = self.decode(z, skips)
+        return noise_hat, mu, logvar
+
 
 
 # =====================
@@ -245,36 +247,75 @@ class ConvoGan(nn.Module):
 # =====================
 
 def vae_loss(recon, target, mu, logvar, beta=1e-4):
-    recon_loss = nn.functional.mse_loss(recon, target, reduction='mean')
+    # recon_loss = nn.functional.mse_loss(recon, target, reduction='mean')
+    recon_loss = nn.functional.l1_loss(recon, target, reduction='mean')
+
     kl = -0.5 * torch.mean(torch.sum(
         1 + logvar - mu.pow(2) - logvar.exp(), dim=1
     ))
     return recon_loss + beta * kl, recon_loss, kl
 
+def vae_residual_loss(
+    noisy,
+    clean,
+    noise_hat,
+    mu,
+    logvar,
+    beta=1e-4,
+    lambda_noise=1.0,
+):
+    """
+    noisy, clean, noise_hat: [B, C, H, W]
+    noisy, clean 在 [0,1]
+    recon = noisy - noise_hat  clamp to [0,1]
+    """
+    recon = noisy - noise_hat
+    recon = torch.clamp(recon, 0.0, 1.0)
 
-def train_epoch(model, loader, optimizer, device, beta=1e-4):
+    recon_loss = nn.functional.l1_loss(recon, clean, reduction="mean")
 
+    noise_gt   = noisy - clean
+    noise_loss = nn.functional.l1_loss(noise_hat, noise_gt, reduction="mean")
+
+    kl = -0.5 * torch.mean(torch.sum(
+        1 + logvar - mu.pow(2) - logvar.exp(), dim=1
+    ))
+
+    total = recon_loss + lambda_noise * noise_loss + beta * kl
+    return total, recon_loss, noise_loss, kl, recon
+
+
+def train_epoch(model, loader, optimizer, device, beta=1e-4, lambda_noise=1.0):
     model.train()
-    total_loss = total_recon = total_kl = 0.0
+    total_loss = total_recon = total_kl = total_noise = 0.0
 
     for noisy, clean in loader:
         noisy = noisy.to(device)
         clean = clean.to(device)
 
         optimizer.zero_grad()
-        recon, mu, logvar = model(noisy)
-        loss, recon_loss, kl_loss = vae_loss(recon, clean, mu, logvar, beta=beta)
+        noise_hat, mu, logvar = model(noisy)
+        loss, recon_loss, noise_loss, kl_loss, recon = vae_residual_loss(
+            noisy, clean, noise_hat, mu, logvar,
+            beta=beta,
+            lambda_noise=lambda_noise,
+        )
         loss.backward()
         optimizer.step()
 
         bs = noisy.size(0)
-        total_loss  += loss.item()       * bs
-        total_recon += recon_loss.item() * bs
-        total_kl    += kl_loss.item()    * bs
+        total_loss  += loss.item()        * bs
+        total_recon += recon_loss.item()  * bs
+        total_noise += noise_loss.item()  * bs
+        total_kl    += kl_loss.item()     * bs
 
     n = len(loader.dataset)
-    return total_loss / n, total_recon / n, total_kl / n
-
+    return (
+        total_loss / n,
+        total_recon / n,
+        total_noise / n,
+        total_kl / n,
+    )
 
 def train_epoch_withGan(
     vae_model,
@@ -286,15 +327,15 @@ def train_epoch_withGan(
     beta=1e-4,
     lambda_gan=5e-5,
     lambda_feat=1e-3,
+    lambda_noise=1.0,
     k_G=1,
-    k_D=4, 
+    k_D=4,
 ):
-
     vae_model.train()
     discriminator.train()
 
     total_G = total_recon = total_kl = total_gan_G = 0.0
-    total_D = 0.0
+    total_D = total_noise = 0.0
     N = len(loader.dataset)
     D_count = 0
 
@@ -303,12 +344,12 @@ def train_epoch_withGan(
         clean = clean.to(device)
         bs = noisy.size(0)
 
-
         for _ in range(k_D):
             optimizer_D.zero_grad()
 
             with torch.no_grad():
-                recon, _, _ = vae_model(noisy)
+                noise_hat, _, _ = vae_model(noisy)
+                recon = torch.clamp(noisy - noise_hat, 0.0, 1.0)
 
             real_pair = torch.cat([noisy, clean], dim=1)   # [B, 6, H, W]
             fake_pair = torch.cat([noisy, recon], dim=1)   # [B, 6, H, W]
@@ -329,16 +370,17 @@ def train_epoch_withGan(
             total_D += loss_D.item() * bs
             D_count += bs
 
-
         for _ in range(k_G):
             optimizer_G.zero_grad()
 
-            recon, mu, logvar = vae_model(noisy)
-            vae_total, recon_loss, kl_loss = vae_loss(
-                recon, clean, mu, logvar, beta=beta
+            noise_hat, mu, logvar = vae_model(noisy)
+            vae_total, recon_loss, noise_loss, kl_loss, recon = vae_residual_loss(
+                noisy, clean, noise_hat, mu, logvar,
+                beta=beta,
+                lambda_noise=lambda_noise,
             )
 
-            # ---- GAN + Feature matching ----
+            # ---- GAN + feature matching ----
             fake_pair_for_G = torch.cat([noisy, recon], dim=1)
             real_pair_for_G = torch.cat([noisy, clean], dim=1)
 
@@ -353,20 +395,22 @@ def train_epoch_withGan(
             feat_real = feat_real.detach()
 
             gan_loss_G = adversarial_loss(pred_fake_for_G, valid)
+            feat_loss  = F.l1_loss(feat_fake, feat_real)
 
-            feat_loss = F.l1_loss(feat_fake, feat_real)
-
-            loss_total = vae_total \
-                         + lambda_gan * gan_loss_G \
-                         + lambda_feat * feat_loss
+            loss_total = (
+                vae_total
+                + lambda_gan  * gan_loss_G
+                + lambda_feat * feat_loss
+            )
 
             loss_total.backward()
             optimizer_G.step()
 
-            total_G     += loss_total.item()  * bs
-            total_recon += recon_loss.item()  * bs
-            total_kl    += kl_loss.item()     * bs
-            total_gan_G += gan_loss_G.item()  * bs
+            total_G      += loss_total.item()  * bs
+            total_recon  += recon_loss.item()  * bs
+            total_noise  += noise_loss.item()  * bs
+            total_kl     += kl_loss.item()     * bs
+            total_gan_G  += gan_loss_G.item()  * bs
 
     if D_count > 0:
         D_epoch = total_D / D_count
@@ -374,9 +418,10 @@ def train_epoch_withGan(
         D_epoch = 0.0
 
     return {
-        "G_total": total_G / N,
+        "G_total": total_G    / N,
         "recon":   total_recon / N,
-        "kl":      total_kl / N,
+        "noise":   total_noise / N,
+        "kl":      total_kl    / N,
         "gan_G":   total_gan_G / N,
         "D_loss":  D_epoch,
     }
@@ -389,24 +434,25 @@ def eval_epoch(
     device,
     beta=1e-4,
     discriminator=None,
-    lambda_gan=0.0
+    lambda_gan=0.0,
+    lambda_noise=1.0,
 ):
-
     vae_model.eval()
     if discriminator is not None:
         discriminator.eval()
 
-    total_loss = total_recon = total_kl = 0.0
-    total_adv  = 0.0
+    total_loss = total_recon = total_kl = total_adv = total_noise = 0.0
     N = len(loader.dataset)
 
     for noisy, clean in loader:
         noisy = noisy.to(device)
         clean = clean.to(device)
 
-        recon, mu, logvar = vae_model(noisy)
-        vae_total, recon_loss, kl_loss = vae_loss(
-            recon, clean, mu, logvar, beta=beta
+        noise_hat, mu, logvar = vae_model(noisy)
+        vae_total, recon_loss, noise_loss, kl_loss, recon = vae_residual_loss(
+            noisy, clean, noise_hat, mu, logvar,
+            beta=beta,
+            lambda_noise=lambda_noise,
         )
 
         if discriminator is not None and lambda_gan > 0.0:
@@ -422,12 +468,14 @@ def eval_epoch(
         bs = noisy.size(0)
         total_loss  += loss.item()       * bs
         total_recon += recon_loss.item() * bs
+        total_noise += noise_loss.item() * bs
         total_kl    += kl_loss.item()    * bs
         total_adv   += gan_loss_G.item() * bs
 
     return (
-        total_loss / N,
+        total_loss  / N,
         total_recon / N,
-        total_kl / N,
-        total_adv / N,
+        total_noise / N,
+        total_kl    / N,
+        total_adv   / N,
     )

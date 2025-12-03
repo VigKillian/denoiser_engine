@@ -50,7 +50,8 @@ def save_recon_examples(model, loader, device, epoch, out_dir="results", n_show=
     noisy = torch.stack(noisy_list, dim=0).to(device)   # [n_show, C, H, W]
     clean = torch.stack(clean_list, dim=0).to(device)
 
-    recon, _, _ = model(noisy)
+    noise_hat, _, _ = model(noisy)
+    recon = torch.clamp(noisy - noise_hat, 0.0, 1.0)
 
     to_save = torch.cat([noisy, recon, clean], dim=0).cpu()
 
@@ -78,12 +79,13 @@ def main():
     pretrain_vae_epochs = 0 
     gan_epochs          = 80 
     k_G = 1
-    k_D = 5 
+    k_D = 3 
 
     lr         = 1e-3
     beta       = 1e-5            # KL
     lambda_gan = 1e-4            # GAN loss
     lambda_feat = 1e-3
+    lambda_noise = 1.0
 
     # =================================
 
@@ -139,8 +141,10 @@ def main():
         global_epoch += 1
         timer_start = time.time()
 
-        tr_loss, tr_rec, tr_kl = train_epoch(
-            model, train_loader, optimizer_vae, device, beta=beta
+        tr_loss, tr_rec, tr_noise, tr_kl = train_epoch(
+            model, train_loader, optimizer_vae, device,
+            beta=beta,
+            lambda_noise=lambda_noise,
         )
         stats = {
             "G_total": tr_loss,
@@ -149,11 +153,12 @@ def main():
             "gan_G":   0.0,
             "D_loss":  0.0,
         }
-        vl_total, vl_rec, vl_kl, vl_gan = eval_epoch(
+        vl_total, vl_rec, vl_noise, vl_kl, vl_gan = eval_epoch(
             model, test_loader, device,
             beta=beta,
             discriminator=None,
-            lambda_gan=0.0
+            lambda_gan=0.0,
+            lambda_noise=lambda_noise,
         )
 
 
@@ -165,7 +170,8 @@ def main():
             for noisy, clean in test_loader:
                 noisy = noisy.to(device)
                 clean = clean.to(device)
-                recon, _, _ = model(noisy)
+                noise_hat, _, _ = model(noisy)
+                recon = noisy - noise_hat
                 psnr_vals.append(compute_psnr(recon, clean))
 
         val_psnr = sum(psnr_vals) / len(psnr_vals)
@@ -223,15 +229,17 @@ def main():
             beta=beta,
             lambda_gan=lambda_gan,
             lambda_feat=lambda_feat,
+            lambda_noise=lambda_noise,   # ☆ 新增
             k_G=k_G,
-            k_D=k_D, 
+            k_D=k_D,
         )
 
-        vl_total, vl_rec, vl_kl, vl_gan = eval_epoch(
+        vl_total, vl_rec, vl_noise, vl_kl, vl_gan = eval_epoch(
             model, test_loader, device,
             beta=beta,
             discriminator=discriminator,
             lambda_gan=lambda_gan,
+            lambda_noise=lambda_noise,
         )
 
         model.eval()
@@ -240,7 +248,8 @@ def main():
             for noisy, clean in test_loader:
                 noisy = noisy.to(device)
                 clean = clean.to(device)
-                recon, _, _ = model(noisy)
+                noise_hat, _, _ = model(noisy)
+                recon = noisy - noise_hat
                 psnr_vals.append(compute_psnr(recon, clean))
         val_psnr = sum(psnr_vals) / len(psnr_vals)
 

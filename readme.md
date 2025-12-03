@@ -70,5 +70,18 @@ pip install opencv-python
 
 
 # record 
-vae pure with noisy3 fort , max psnr when epoch < 30 : 26.5dB
-with GAN with noisy3 fort ,  max psnr 25.4dB (lamda gan = 5e-5,lambda feat = 5e-4, kd=4,kg=2)
+vae pure with noisy3 fort , max psnr when epoch < 30 : 26.5dB (12-03_09-36)
+with GAN with noisy3 fort ,  max psnr 25.4dB (lamda gan = 5e-5,lambda feat = 5e-4, kd=4,kg=2)  (12-03_09-47)
+old GAN with noisy3 fort ,  max psnr 25.9dB (abandon)  (12-03_10-15)
+with GAN with noisy3 fort ,  max psnr 25.4dB (lamda gan = 5e-5,lambda feat = 5e-4, kd=4,kg=2, vae mode L1 but not mse)  (12-03_10-37)
+
+------------------------------------------
+--vae pure with noisy rand faible , max psnr :33.933 dB (12-03_12-42)
+with GAN with noisy rand faible ,  max psnr 34.04dB (lamda gan = 1e-4,lambda feat = 1e-3, kd=3,kg=1,beta = 1e-5 vae mode L1 but not mse)  (12-03_11-57)
+[X:PAS STABLE]with GAN with noisy rand faible ,  max psnr 32.5 dB (lamda gan = 5e-4,lambda feat = 1e-3, kd=3,kg=1,beta = 1e-4 vae mode L1 but not mse)  (12-03_13-51)
+
+
+--vae pure with noisy gauss fort , max psnr :26.043 dB (12-03_12-41)
+with GAN with noisy gauss fort ,  max psnr 26.131 (lamda gan = 1e-4,lambda feat = 1e-3, kd=3,kg=1, vae mode L1 but not mse)  (12-03_12-04)
+[X:PAS STABLE]with GAN with noisy gauss fort ,  max psnr 24.8 dB (lamda gan = 5e-4,lambda feat = 1e-3, kd=3,kg=1, vae mode L1 but not mse)  (12-03_13-50)
+
