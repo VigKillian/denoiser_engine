@@ -66,3 +66,9 @@ pip install opencv-python
 ### VAE
 ![](./readmeImg/randomVAE.png)
 ![](./readmeImg/crv.png)
+
+
+
+# record 
+vae pure with noisy3 fort , max psnr when epoch < 30 : 26.5dB
+with GAN with noisy3 fort ,  max psnr 25.4dB (lamda gan = 5e-5,lambda feat = 5e-4, kd=4,kg=2)
