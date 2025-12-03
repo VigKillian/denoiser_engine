@@ -63,7 +63,7 @@ def denoise_folder(model, in_dir, out_dir, img_size=64, device="cpu"):
 
 def main():
     # ====== setting ======
-    checkpoint_path = "checkpoints/11-29_20-34/denoise_vae_epoch  1.pth" 
+    checkpoint_path = "checkpoints/12-01_11-22/denoise_vae_epoch_077.pth" 
      
     img_size = 128
     latent_dim = 256
