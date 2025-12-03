@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 import torchvision.utils as vutils
 from datetime import datetime
 import time
-import cv2
+
 
 from denoise_vae_model import (
     DenoisePairDataset,
@@ -79,9 +79,9 @@ def main():
     epochs     = 50
     lr         = 1e-3
     beta       = 1e-5          # KL
-    lambda_gan = 1e-4          # lambda for GAN
+    lambda_gan = 5e-4          # lambda for GAN
     # lambda_gan = 0          # lambda for GAN
-    pretrain_epochs = 25 
+    pretrain_epochs = 0 
     # =================================
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

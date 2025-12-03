@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 from torchvision import transforms
-import cv2
 
 class DenoisePairDataset(Dataset):
 
@@ -18,7 +17,7 @@ class DenoisePairDataset(Dataset):
         self.img_size = img_size
 
         clean_dir = os.path.join(root_dir, split, "imgs")
-        noisy_dir = os.path.join(root_dir, split, "noisy3")
+        noisy_dir = os.path.join(root_dir, split, "noisy_gauss_fort")
 
         noisy_paths = []
         for ext in ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tif", "*.tiff","*.ppm"]:
