@@ -66,3 +66,7 @@ pip install opencv-python
 ### VAE
 ![](./readmeImg/randomVAE.png)
 ![](./readmeImg/crv.png)
+
+# Vidéo de présentation
+
+https://drive.google.com/file/d/1cFXDzqdRuU97u9a-7cfnqqSVnAx19uWQ/view?usp=sharing

@@ -69,14 +69,14 @@ def save_recon_examples(model, loader, device, epoch, out_dir="results", n_show=
 def main():
     # ===== config =====
     root_dir   = "./dataset"  
-    max_train = None           
-    max_val   = None           
+    max_train = 6600         
+    max_val   = 1200           
     img_size   = 128
     nb_channels_base = 32   # if 32 : 3->32->32*2->32*4 --> 32*2->32->3
     latent_dim = 256
     batch_size = 12
     pretrain_vae_epochs = 0 
-    gan_epochs          = 80 
+    gan_epochs          = 40
     k_G = 1
     k_D = 2 
 
