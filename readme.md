@@ -4,8 +4,10 @@
 
 Les comptes rendus sont disponible dans le répertoire correspondant.
 
-### Semaine 1 :
-slides : https://docs.google.com/presentation/d/1ieagxBHYyKp3GInJJxnne_svQI6RG-Uf5wT322rOXIE/edit?usp=sharing
+### Slides :
+Oral n°1 : https://docs.google.com/presentation/d/1ieagxBHYyKp3GInJJxnne_svQI6RG-Uf5wT322rOXIE/edit?usp=sharing
+Oral n°2 : https://docs.google.com/presentation/d/1_BK81--V1ReSZxPqu7Ofj1e4MOQSLRZwoOR0ZaOuguk/edit?usp=sharing
+Soutenance finale : https://docs.google.com/presentation/d/1M-_2iQS5Wc2FCnyJQrGxY_vgxuh54cLMXABOTi_xstU/edit?usp=sharing
 
 # Pour l'exécuter
 ```bash
